@@ -23,8 +23,10 @@ schema_view = get_schema_view(
     authentication_classes=[],
 )
 
+
 def health(request):
     return JsonResponse({"ok": True})
+
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -35,7 +37,6 @@ urlpatterns = [
         name="schema-swagger-ui",
     ),
     path("", index, name="home"),
-
     path("health/", health),
 ]
 

@@ -30,7 +30,6 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-
     # сторонні
     "rest_framework",
     "rest_framework_simplejwt",
@@ -40,7 +39,6 @@ INSTALLED_APPS = [
     "social_django",
     "corsheaders",
     "storages",  # <--- для AWS S3
-
     "shop",
 ]
 
@@ -88,7 +86,7 @@ DATABASES = {
         "NAME": os.getenv("DB_NAME"),
         "USER": os.getenv("DB_USER"),
         "PASSWORD": os.getenv("DB_PASSWORD"),
-        "HOST": os.getenv("DB_HOST"),   # ендпоінт RDS
+        "HOST": os.getenv("DB_HOST"),  # ендпоінт RDS
         "PORT": os.getenv("DB_PORT", "5432"),
     }
 }
@@ -99,7 +97,9 @@ DATABASES = {
 # =====================
 
 AUTH_PASSWORD_VALIDATORS = [
-    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
+    {
+        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"
+    },
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
@@ -164,7 +164,9 @@ SIMPLE_JWT = {
 # CORS
 # =====================
 
-CORS_ALLOWED_ORIGINS = os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+CORS_ALLOWED_ORIGINS = os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000").split(
+    ","
+)
 
 
 # =====================
