@@ -1,9 +1,10 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
+from phonenumber_field.modelfields import PhoneNumberField
 
 
 class Customer(AbstractUser):
-    phone_number = models.CharField(max_length=11, unique=True)
+    phone_number = PhoneNumberField(unique=True, region="UA", blank=True, null=True)
     address = models.TextField(blank=True)
 
 
