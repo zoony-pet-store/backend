@@ -1,20 +1,44 @@
 stages:
   - lint
   - test
+  - deploy
 
-black:
+variables:
+  AWS_DEFAULT_REGION: "us-east-1"
+  EB_APPLICATION: "pet-store-backend"
+  EB_ENVIRONMENT: "pet-store-env"
+
+lint:
   stage: lint
-  image: python:3.11
+  image: python:3.12
   before_script:
     - pip install -r requirements.txt
   script:
     - black --check .
-  allow_failure: false
 
 test:
   stage: test
-  image: python:3.11
+  image: python:3.12
   before_script:
     - pip install -r requirements.txt
   script:
     - pytest
+
+deploy:
+  stage: deploy
+  image: amazon/aws-cli:2.15.1
+  before_script:
+    - pip install -r requirements.txt
+    # налаштування AWS CLI
+    - aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
+    - aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
+    - aws configure set default.region $AWS_DEFAULT_REGION
+  script:
+    # Пакуємо проєкт у .zip для Beanstalk
+    - zip -r deploy.zip . -x "*.git*" "*.venv*" "__pycache__/*"
+    # Деплой через CLI
+    - aws elasticbeanstalk create-application-version --application-name $EB_APPLICATION --version-label $CI_COMMIT_SHA --source-bundle S3Bucket=$EB_APPLICATION,S3Key=$CI_COMMIT_SHA.zip
+    - aws s3 cp deploy.zip s3://$EB_APPLICATION/$CI_COMMIT_SHA.zip
+    - aws elasticbeanstalk update-environment --environment-name $EB_ENVIRONMENT --version-label $CI_COMMIT_SHA
+  only:
+    - develop
