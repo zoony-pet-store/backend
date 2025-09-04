@@ -7,7 +7,7 @@ variables:
   AWS_DEFAULT_REGION: "eu-central-1"
   EB_APPLICATION: "catdog-backend"
   EB_ENVIRONMENT: "catdog-backend-env"
-  S3_BUCKET: "catdog-backend-deploy-bucket"
+  S3_BUCKET: "catdog-backend-bucket"
 
 lint:
   stage: lint
@@ -35,12 +35,7 @@ deploy:
   script:
     - zip -r deploy.zip . -x "*.git*" "*.venv*" "__pycache__/*" "*.pytest_cache*"
     - aws s3 cp deploy.zip s3://$S3_BUCKET/$CI_COMMIT_SHA.zip
-    - aws elasticbeanstalk create-application-version \
-        --application-name $EB_APPLICATION \
-        --version-label $CI_COMMIT_SHA \
-        --source-bundle S3Bucket=$S3_BUCKET,S3Key=$CI_COMMIT_SHA.zip
-    - aws elasticbeanstalk update-environment \
-        --environment-name $EB_ENVIRONMENT \
-        --version-label $CI_COMMIT_SHA
+    - aws elasticbeanstalk create-application-version --application-name $EB_APPLICATION --version-label $CI_COMMIT_SHA --source-bundle S3Bucket=$S3_BUCKET,S3Key=$CI_COMMIT_SHA.zip
+    - aws elasticbeanstalk update-environment --environment-name $EB_ENVIRONMENT --version-label $CI_COMMIT_SHA
   only:
     - develop
