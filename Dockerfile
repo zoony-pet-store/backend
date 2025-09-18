@@ -19,6 +19,6 @@ COPY . .
 RUN useradd -m appuser && chown -R appuser /app
 USER appuser
 
-EXPOSE 8080
+EXPOSE 8000
 
-CMD ["gunicorn", "pet_store.wsgi:application", "--bind", "0.0.0.0:8080", "--workers", "3", "--timeout", "120"]
+CMD ["gunicorn", "pet_store.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3", "--timeout", "120"]
