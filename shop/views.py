@@ -15,6 +15,8 @@ from .serializers import UserRegisterSerializer, LoginSerializer, GoogleAuthSeri
 
 def health_check(request):
     return JsonResponse({"status": "ok", "message": "Service is healthy"})
+
+
 def index(request: HttpRequest) -> HttpResponse:
     num_products = Product.objects.count()
     count_users = Customer.objects.count()
