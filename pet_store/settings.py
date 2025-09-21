@@ -5,12 +5,8 @@ from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# завантажуємо змінні середовища (.env)
 load_dotenv(dotenv_path=BASE_DIR / ".env")
 
-# =====================
-# БАЗОВІ НАЛАШТУВАННЯ
-# =====================
 
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
 
@@ -23,10 +19,6 @@ ALLOWED_HOSTS = [
 ]
 
 
-# =====================
-# ДОДАТКИ
-# =====================
-
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -34,7 +26,6 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    # сторонні
     "rest_framework",
     "rest_framework_simplejwt",
     "drf_yasg",
@@ -42,7 +33,7 @@ INSTALLED_APPS = [
     "axes",
     "social_django",
     "corsheaders",
-    "storages",  # <--- для AWS S3
+    "storages",
     "shop",
 ]
 
@@ -81,7 +72,7 @@ WSGI_APPLICATION = "pet_store.wsgi.application"
 
 
 # =====================
-# БАЗА ДАНИХ (PostgreSQL на RDS)
+# PostgreSQL on RDS
 # =====================
 
 DATABASES = {
@@ -95,10 +86,6 @@ DATABASES = {
     }
 }
 
-
-# =====================
-# АВТЕНТИФІКАЦІЯ
-# =====================
 
 AUTH_PASSWORD_VALIDATORS = [
     {
@@ -116,7 +103,7 @@ USE_TZ = True
 
 
 # =====================
-# СТАТИКА / МЕДІА (AWS S3)
+# STATIC / MEDIA (AWS S3)
 # =====================
 
 STATIC_URL = "/static/"
@@ -130,7 +117,7 @@ AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
 AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
 AWS_STORAGE_BUCKET_NAME = os.getenv("AWS_STORAGE_BUCKET_NAME")
 AWS_S3_REGION_NAME = os.getenv("AWS_REGION", "us-east-1")
-AWS_QUERYSTRING_AUTH = False  # щоб медіа лінки були відкритими
+AWS_QUERYSTRING_AUTH = False
 
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
@@ -218,7 +205,7 @@ SOCIAL_AUTH_PIPELINE = (
 
 
 # =====================
-# AXES (захист)
+# AXES
 # =====================
 
 AXES_FAILURE_LIMIT = 5
