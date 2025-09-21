@@ -1,4 +1,4 @@
-from django.http import HttpRequest, HttpResponse
+from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import render
 from rest_framework import status
 from rest_framework.permissions import AllowAny
@@ -13,6 +13,8 @@ from .models import Product, Customer, Category
 from .serializers import UserRegisterSerializer, LoginSerializer, GoogleAuthSerializer
 
 
+def health_check(request):
+    return JsonResponse({"status": "ok", "message": "Service is healthy"})
 def index(request: HttpRequest) -> HttpResponse:
     num_products = Product.objects.count()
     count_users = Customer.objects.count()

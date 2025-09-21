@@ -5,10 +5,8 @@ from django.conf.urls.static import static
 from rest_framework import permissions
 from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
-from django.http import JsonResponse
-
-from shop.views import index
-
+from shop import views
+from shop.views import index, health_check
 
 schema_view = get_schema_view(
     openapi.Info(
@@ -24,8 +22,6 @@ schema_view = get_schema_view(
 )
 
 
-def health(request):
-    return JsonResponse({"ok": True})
 
 
 urlpatterns = [
@@ -37,7 +33,7 @@ urlpatterns = [
         name="schema-swagger-ui",
     ),
     path("", index, name="home"),
-    path("health/", health),
+    path("health/", views.health_check, name="health-check"),
 ]
 
 if settings.DEBUG:
