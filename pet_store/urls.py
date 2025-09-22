@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
-from django.conf.urls.static import static
+from django.contrib.staticfiles.urls import staticfiles_urlpatterns
 from rest_framework import permissions
 from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
@@ -29,3 +29,5 @@ urlpatterns = [
     path("", index, name="home"),
     path("health/", views.health_check, name="health-check"),
 ]
+
+urlpatterns += staticfiles_urlpatterns()
