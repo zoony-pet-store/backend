@@ -15,28 +15,18 @@ schema_view = get_schema_view(
         description="User authentication API",
     ),
     public=True,
-    permission_classes=[
-        permissions.AllowAny,
-    ],
+    permission_classes=[permissions.AllowAny],
     authentication_classes=[],
 )
-
 
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/auth/", include("shop.urls")),
     path(
-        "api/docs",
+        "api/docs/",
         schema_view.with_ui("swagger", cache_timeout=0),
         name="schema-swagger-ui",
     ),
     path("", index, name="home"),
     path("health/", views.health_check, name="health-check"),
 ]
-
-if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
-
-schema_view.public = True
-schema_view.permission_classes = (permissions.AllowAny,)
-schema_view.authentication_classes = []
