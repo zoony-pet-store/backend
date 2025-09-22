@@ -36,7 +36,3 @@ urlpatterns = [
 
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
-
-schema_view.public = True
-schema_view.permission_classes = (permissions.AllowAny,)
-schema_view.authentication_classes = []
