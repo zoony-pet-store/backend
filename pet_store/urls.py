@@ -20,12 +20,12 @@ schema_view = get_schema_view(
 
 urlpatterns = [
     path("admin/", admin.site.urls),
-    path("api/auth/", include("shop.urls")),
     path(
         "api/docs/",
         schema_view.with_ui("swagger", cache_timeout=0),
         name="schema-swagger-ui",
     ),
+    path("api/auth/", include("shop.urls")),
     path("", index, name="home"),
     path("health/", views.health_check, name="health-check"),
 ]
