@@ -1,9 +1,8 @@
-from django.contrib.auth import authenticate
 from phonenumber_field.serializerfields import PhoneNumberField
 from rest_framework import serializers
 from django.contrib.auth.password_validation import validate_password
 from django.core.validators import validate_email
-from django.core.exceptions import ValidationError
+from django.core.exceptions import ValidationError, ObjectDoesNotExist
 from django.utils.translation import gettext_lazy as _
 from google.oauth2 import id_token
 from google.auth.transport import requests
@@ -24,11 +23,10 @@ class UserRegisterSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Customer
-        fields = ("username", "email", "phone_number", "password", "password2")
+        fields = ("email", "phone_number", "password", "password2")
         extra_kwargs = {
             "email": {"required": True},
             "phone_number": {"required": True},
-            "username": {"required": True},
         }
 
     def validate_email(self, value):
@@ -41,7 +39,6 @@ class UserRegisterSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 _("A user with that email already exists.")
             )
-
         return value
 
     def validate(self, attrs):
@@ -58,11 +55,14 @@ class UserRegisterSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         validated_data.pop("password2")
         user = Customer.objects.create_user(
-            username=validated_data["username"],
             email=validated_data["email"],
             phone_number=validated_data["phone_number"],
             password=validated_data["password"],
         )
+
+        user.email_verified = True
+        user.save()
+
         return user
 
 
@@ -73,22 +73,20 @@ class LoginSerializer(serializers.Serializer):
     def validate(self, attrs):
         email = attrs.get("email")
         password = attrs.get("password")
-        user = authenticate(
-            request=self.context.get("request"), email=email, password=password
-        )
 
-        if not user:
-            logger.warning(f"Failed login attempt for email: {email}")
+        try:
+            user = Customer.objects.get(email=email)
+        except ObjectDoesNotExist:
+            raise serializers.ValidationError(_("Invalid email or password."))
+
+        if not user.check_password(password):
             raise serializers.ValidationError(_("Invalid email or password."))
 
         if not user.is_active:
-            logger.warning(f"Attempt to login to disabled account: {email}")
             raise serializers.ValidationError(_("User account disabled."))
 
-        if hasattr(user, "email_verified") and not user.email_verified:
-            raise serializers.ValidationError(
-                _("Email not verified. Please check your inbox.")
-            )
+        if not user.email_verified:
+            raise serializers.ValidationError(_("Email not verified."))
 
         attrs["user"] = user
         return attrs
