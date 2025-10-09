@@ -48,7 +48,7 @@ class UserRegisterSerializer(serializers.ModelSerializer):
             )
         if Customer.objects.filter(phone_number=attrs["phone_number"]).exists():
             raise serializers.ValidationError(
-                {"phone_number": _("A user with that phone number already exists.")}
+                {"phone_number": _("A user with that phone number already exist.")}
             )
         return attrs
 
