@@ -113,7 +113,7 @@ try:
         database=os.getenv("DB_NAME"),
         user=os.getenv("DB_USER"),
         password=os.getenv("DB_PASSWORD"),
-        connect_timeout=3
+        connect_timeout=3,
     )
     test_conn.close()
     # Якщо підключення вдале - використовуємо PostgreSQL
@@ -162,7 +162,9 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 # Автоматичне перемикання між локальним сховищем та AWS S3
 if os.getenv("AWS_STORAGE_BUCKET_NAME") and os.getenv("AWS_ACCESS_KEY_ID"):
     # Використовуємо AWS S3
-    MEDIA_URL = f"https://{os.getenv('AWS_STORAGE_BUCKET_NAME')}.s3.amazonaws.com/media/"
+    MEDIA_URL = (
+        f"https://{os.getenv('AWS_STORAGE_BUCKET_NAME')}.s3.amazonaws.com/media/"
+    )
     DEFAULT_FILE_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
 
     AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
@@ -173,9 +175,9 @@ if os.getenv("AWS_STORAGE_BUCKET_NAME") and os.getenv("AWS_ACCESS_KEY_ID"):
     print("🚀 Using AWS S3 for media files")
 else:
     # Використовуємо локальне сховище
-    MEDIA_URL = '/media/'
-    MEDIA_ROOT = BASE_DIR / 'media'
-    DEFAULT_FILE_STORAGE = 'django.core.files.storage.FileSystemStorage'
+    MEDIA_URL = "/media/"
+    MEDIA_ROOT = BASE_DIR / "media"
+    DEFAULT_FILE_STORAGE = "django.core.files.storage.FileSystemStorage"
     print("⚙️ Using local storage for media files")
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
