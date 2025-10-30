@@ -7,7 +7,6 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 load_dotenv(dotenv_path=BASE_DIR / ".env")
 
-
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
 
 DEBUG = os.getenv("DEBUG", "False") == "True"
@@ -48,7 +47,6 @@ if DEBUG:
             "testserver",
         ]
     )
-
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -101,22 +99,44 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "pet_store.wsgi.application"
 
-
 # =====================
-# PostgreSQL on RDS
+# DATABASE (Auto-switch between SQLite and PostgreSQL)
 # =====================
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": os.getenv("DB_NAME"),
-        "USER": os.getenv("DB_USER"),
-        "PASSWORD": os.getenv("DB_PASSWORD"),
-        "HOST": os.getenv("DB_HOST"),
-        "PORT": os.getenv("DB_PORT", "5432"),
+# Автоматичне визначення - чи можемо підключитися до PostgreSQL
+try:
+    import psycopg2
+
+    # Швидка перевірка підключення до PostgreSQL (3 секунди таймаут)
+    test_conn = psycopg2.connect(
+        host=os.getenv("DB_HOST"),
+        database=os.getenv("DB_NAME"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASSWORD"),
+        connect_timeout=3
+    )
+    test_conn.close()
+    # Якщо підключення вдале - використовуємо PostgreSQL
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": os.getenv("DB_NAME"),
+            "USER": os.getenv("DB_USER"),
+            "PASSWORD": os.getenv("DB_PASSWORD"),
+            "HOST": os.getenv("DB_HOST"),
+            "PORT": os.getenv("DB_PORT", "5432"),
+        }
     }
-}
-
+    print("🚀 Using PostgreSQL (RDS) for database")
+except Exception as e:
+    # Якщо підключення не вдале - використовуємо SQLite
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
+        }
+    }
+    print(f"⚙️ Using SQLite for local development (Reason: {str(e)})")
 
 AUTH_PASSWORD_VALIDATORS = [
     {
@@ -132,28 +152,34 @@ TIME_ZONE = "UTC"
 USE_I18N = True
 USE_TZ = True
 
-
 # =====================
-# STATIC / MEDIA (AWS S3)
+# STATIC / MEDIA (Auto-switch between local and S3)
 # =====================
 
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
-MEDIA_URL = f"https://{os.getenv('AWS_STORAGE_BUCKET_NAME')}.s3.amazonaws.com/media/"
-DEFAULT_FILE_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
+# Автоматичне перемикання між локальним сховищем та AWS S3
+if os.getenv("AWS_STORAGE_BUCKET_NAME") and os.getenv("AWS_ACCESS_KEY_ID"):
+    # Використовуємо AWS S3
+    MEDIA_URL = f"https://{os.getenv('AWS_STORAGE_BUCKET_NAME')}.s3.amazonaws.com/media/"
+    DEFAULT_FILE_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
 
-# AWS S3
-AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
-AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
-AWS_STORAGE_BUCKET_NAME = os.getenv("AWS_STORAGE_BUCKET_NAME")
-AWS_S3_REGION_NAME = os.getenv("AWS_REGION", "us-east-1")
-AWS_QUERYSTRING_AUTH = False
-
+    AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
+    AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
+    AWS_STORAGE_BUCKET_NAME = os.getenv("AWS_STORAGE_BUCKET_NAME")
+    AWS_S3_REGION_NAME = os.getenv("AWS_REGION", "us-east-1")
+    AWS_QUERYSTRING_AUTH = False
+    print("🚀 Using AWS S3 for media files")
+else:
+    # Використовуємо локальне сховище
+    MEDIA_URL = '/media/'
+    MEDIA_ROOT = BASE_DIR / 'media'
+    DEFAULT_FILE_STORAGE = 'django.core.files.storage.FileSystemStorage'
+    print("⚙️ Using local storage for media files")
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 AUTH_USER_MODEL = "shop.Customer"
-
 
 # =====================
 # REDIRECTS
@@ -162,7 +188,6 @@ AUTH_USER_MODEL = "shop.Customer"
 LOGOUT_REDIRECT_URL = "/"
 LOGIN_REDIRECT_URL = "/"
 INTERNAL_IPS = ["127.0.0.1"]
-
 
 # =====================
 # DRF + JWT
@@ -181,7 +206,6 @@ SIMPLE_JWT = {
     "BLACKLIST_AFTER_ROTATION": True,
 }
 
-
 # =====================
 # CORS
 # =====================
@@ -189,7 +213,6 @@ SIMPLE_JWT = {
 CORS_ALLOWED_ORIGINS = os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000").split(
     ","
 )
-
 
 # =====================
 # EMAIL
@@ -202,7 +225,6 @@ EMAIL_USE_TLS = True
 EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD")
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
-
 
 # =====================
 # GOOGLE AUTH
@@ -233,7 +255,6 @@ SOCIAL_AUTH_PIPELINE = (
     "social_core.pipeline.user.user_details",
     "shop.pipeline.get_tokens_for_user",
 )
-
 
 # =====================
 # AXES

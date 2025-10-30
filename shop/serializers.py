@@ -23,10 +23,9 @@ class UserRegisterSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Customer
-        fields = ("email", "phone_number", "password", "password2")
+        fields = ("email", "password", "password2")
         extra_kwargs = {
             "email": {"required": True},
-            "phone_number": {"required": True},
         }
 
     def validate_email(self, value):
@@ -46,17 +45,12 @@ class UserRegisterSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {"password": _("Password fields didn't match.")}
             )
-        if Customer.objects.filter(phone_number=attrs["phone_number"]).exists():
-            raise serializers.ValidationError(
-                {"phone_number": _("A user with that phone number already exist.")}
-            )
         return attrs
 
     def create(self, validated_data):
         validated_data.pop("password2")
         user = Customer.objects.create_user(
             email=validated_data["email"],
-            phone_number=validated_data["phone_number"],
             password=validated_data["password"],
         )
 
