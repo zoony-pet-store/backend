@@ -41,6 +41,7 @@ deploy:
   stage: deploy
   image: python:3.12-slim
   before_script:
+    - apt-get update && apt-get install -y git
     - pip install awsebcli
     - mkdir -p ~/.aws
     - echo "[profile eb-cli]" > ~/.aws/config
