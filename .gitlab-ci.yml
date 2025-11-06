@@ -42,6 +42,6 @@ deploy:
   before_script:
     - pip install awsebcli
   script:
-    - eb deploy
+    - eb deploy catdog-backend-env --verbose
   only:
     - develop
