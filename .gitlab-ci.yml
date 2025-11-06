@@ -7,42 +7,40 @@ variables:
   AWS_DEFAULT_REGION: "eu-central-1"
   EB_APPLICATION: "catdog-backend"
   EB_ENVIRONMENT: "catdog-backend-env"
-  S3_BUCKET: "catdog-backend-bucket"
+
+image: python:3.12-slim
+
+cache:
+  key: "${CI_COMMIT_REF_SLUG}"
+  paths:
+    - .cache/pip
+    - .venv/
+
+before_script:
+  - python -m venv .venv
+  - source .venv/bin/activate
 
 lint:
   stage: lint
-  image: python:3.12
   before_script:
+    - apt-get update && apt-get install -y build-essential libpq-dev
     - pip install -r requirements.txt
   script:
     - black --check .
 
 test:
   stage: test
-  image: python:3.12
   before_script:
+    - apt-get update && apt-get install -y build-essential libpq-dev
     - pip install -r requirements.txt
   script:
     - pytest
 
 deploy:
   stage: deploy
-  image: alpine:3.18
   before_script:
-    - apk add --no-cache aws-cli zip
-    - echo "Checking AWS credentials..."
-    - if [ -z "$AWS_ACCESS_KEY_ID" ]; then echo "AWS_ACCESS_KEY_ID is not set"; exit 1; fi
-    - if [ -z "$AWS_SECRET_ACCESS_KEY" ]; then echo "AWS_SECRET_ACCESS_KEY is not set"; exit 1; fi
-    - if [ -z "$AWS_DEFAULT_REGION" ]; then echo "AWS_DEFAULT_REGION is not set"; exit 1; fi
-    - aws configure set aws_access_key_id "$AWS_ACCESS_KEY_ID"
-    - aws configure set aws_secret_access_key "$AWS_SECRET_ACCESS_KEY"
-    - aws configure set default.region "$AWS_DEFAULT_REGION"
-    - echo "Testing AWS credentials..."
-    - aws sts get-caller-identity
+    - pip install awsebcli
   script:
-    - zip -r deploy.zip . -x "*.git*" "*.venv*" "__pycache__/*" "*.pytest_cache*"
-    - aws s3 cp deploy.zip "s3://$S3_BUCKET/$CI_COMMIT_SHA.zip"
-    - aws elasticbeanstalk create-application-version --application-name "$EB_APPLICATION" --version-label "$CI_COMMIT_SHA" --source-bundle "S3Bucket=$S3_BUCKET,S3Key=$CI_COMMIT_SHA.zip"
-    - aws elasticbeanstalk update-environment --environment-name "$EB_ENVIRONMENT" --version-label "$CI_COMMIT_SHA"
+    - eb deploy
   only:
     - develop
