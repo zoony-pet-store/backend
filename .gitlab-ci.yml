@@ -39,9 +39,15 @@ test:
 
 deploy:
   stage: deploy
+  image: python:3.12-slim
   before_script:
     - pip install awsebcli
+    - mkdir -p ~/.aws
+    - echo "[profile eb-cli]" > ~/.aws/config
+    - echo "aws_access_key_id = $AWS_ACCESS_KEY_ID" >> ~/.aws/config
+    - echo "aws_secret_access_key = $AWS_SECRET_ACCESS_KEY" >> ~/.aws/config
+    - echo "region = $AWS_DEFAULT_REGION" >> ~/.aws/config
   script:
-    - eb deploy catdog-backend-env --verbose
+    - eb deploy --verbose --timeout 20
   only:
     - develop
