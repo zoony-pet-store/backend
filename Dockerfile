@@ -24,4 +24,5 @@ USER appuser
 
 EXPOSE 8080
 
-CMD ["gunicorn", "pet_store.wsgi:application", "--bind", "0.0.0.0:8080", "--workers", "2", "--timeout", "90", "--preload"]
+
+CMD sh -c "python manage.py migrate --noinput && gunicorn pet_store.wsgi:application --bind 0.0.0.0:8080 --workers 2 --timeout 90 --preload"
