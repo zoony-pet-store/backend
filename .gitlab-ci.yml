@@ -49,6 +49,6 @@ deploy:
     - echo "aws_secret_access_key = $AWS_SECRET_ACCESS_KEY" >> ~/.aws/config
     - echo "region = $AWS_DEFAULT_REGION" >> ~/.aws/config
   script:
-    - eb deploy --verbose --timeout 20
+    - eb deploy $EB_ENVIRONMENT --verbose --timeout 20
   only:
     - develop
