@@ -12,7 +12,6 @@ RUN apt-get update && apt-get upgrade -y && \
     build-essential \
     libpq-dev \
     curl \
-    redis-server \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
@@ -25,4 +24,4 @@ USER appuser
 
 EXPOSE 8080
 
-CMD sh -c "redis-server --daemonize yes && python manage.py migrate --noinput && python manage.py load_initial_data --skip-if-exists && gunicorn pet_store.wsgi:application --bind 0.0.0.0:8080 --workers 2 --timeout 90 --preload"
+CMD ["gunicorn", "pet_store.wsgi:application", "--bind", "0.0.0.0:8080", "--workers", "2", "--timeout", "90"]
