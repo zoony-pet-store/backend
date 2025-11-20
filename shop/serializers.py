@@ -6,9 +6,11 @@ from django.utils.translation import gettext_lazy as _
 from google.oauth2 import id_token
 from google.auth.transport import requests
 from django.conf import settings
-from .models import Customer
+from .models import Customer, Category, AnimalType
 import logging
 import random
+
+from .services.category_service import CategoryTreeService
 
 logger = logging.getLogger(__name__)
 
@@ -140,3 +142,123 @@ class GoogleAuthSerializer(serializers.Serializer):
     def validate(self, attrs):
         attrs["user"] = self.context["user"]
         return attrs
+
+
+class AnimalTypeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AnimalType
+        fields = ["id", "name", "slug", "icon", "is_active"]
+        read_only_fields = ["id"]
+
+
+class AnimalTypeCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating animal types (without ID)"""
+
+    class Meta:
+        model = AnimalType
+        fields = ["name", "slug", "icon", "is_active"]
+
+
+class CategoryMinimalSerializer(serializers.ModelSerializer):
+    url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Category
+        fields = ["id", "name", "slug", "image_url", "level", "url"]
+
+    def get_url(self, obj):
+        return f"/{obj.animal_type.slug}/{obj.slug}/"
+
+
+class CategoryDetailSerializer(serializers.ModelSerializer):
+    animal_type = AnimalTypeSerializer(read_only=True)
+    parent = CategoryMinimalSerializer(read_only=True)
+    breadcrumbs = serializers.SerializerMethodField()
+    children_count = serializers.SerializerMethodField()
+    url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Category
+        fields = [
+            "id",
+            "name",
+            "slug",
+            "description",
+            "image_url",
+            "animal_type",
+            "parent",
+            "level",
+            "sort_order",
+            "breadcrumbs",
+            "children_count",
+            "url",
+            "created_at",
+        ]
+
+    def get_breadcrumbs(self, obj):
+        return CategoryTreeService.get_breadcrumbs(obj.slug, obj.animal_type.slug)
+
+    def get_children_count(self, obj):
+        return obj.children.filter(is_active=True).count()
+
+    def get_url(self, obj):
+        return f"/{obj.animal_type.slug}/{obj.slug}/"
+
+
+class CategoryCreateUpdateSerializer(serializers.ModelSerializer):
+    """Serializer for creating and updating categories"""
+
+    animal_type = serializers.SlugRelatedField(
+        slug_field="slug", queryset=AnimalType.objects.all()
+    )
+    parent = serializers.SlugRelatedField(
+        slug_field="slug",
+        queryset=Category.objects.all(),
+        required=False,
+        allow_null=True,
+    )
+
+    class Meta:
+        model = Category
+        fields = [
+            "name",
+            "slug",
+            "description",
+            "parent",
+            "animal_type",
+            "image_url",
+            "is_active",
+            "sort_order",
+        ]
+        extra_kwargs = {"slug": {"required": False}}
+
+
+class CategoryTreeNodeSerializer(serializers.ModelSerializer):
+    children = serializers.SerializerMethodField()
+    url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Category
+        fields = [
+            "id",
+            "name",
+            "slug",
+            "description",
+            "image_url",
+            "level",
+            "children",
+            "url",
+        ]
+
+    def get_children(self, obj):
+        if hasattr(obj, "children") and obj.children:
+            return CategoryTreeNodeSerializer(obj.children, many=True).data
+        return []
+
+    def get_url(self, obj):
+        return f"/{obj.animal_type.slug}/{obj.slug}/"
+
+
+class CategoryTreeSerializer(serializers.Serializer):
+    def to_representation(self, instance):
+        return CategoryTreeNodeSerializer(instance, many=True).data

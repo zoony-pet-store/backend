@@ -1,6 +1,9 @@
+import uuid
+
 from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.db import models
 from phonenumber_field.modelfields import PhoneNumberField
+from django.utils.text import slugify
 
 
 class CustomerManager(BaseUserManager):
@@ -48,8 +51,67 @@ class Customer(AbstractUser):
         return self.email
 
 
+class AnimalType(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=50)
+    slug = models.SlugField(unique=True)
+    icon = models.CharField(max_length=100, blank=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = "animal_types"
+
+    def __str__(self):
+        return self.name
+
+
 class Category(models.Model):
-    name = models.CharField(max_length=55)
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=255)
+    slug = models.SlugField()
+    description = models.TextField(blank=True)
+    parent = models.ForeignKey(
+        "self", on_delete=models.CASCADE, null=True, blank=True, related_name="children"
+    )
+    animal_type = models.ForeignKey(AnimalType, on_delete=models.CASCADE)
+    image_url = models.URLField(max_length=500, blank=True)
+    is_active = models.BooleanField(default=True)
+    sort_order = models.IntegerField(default=0)
+    level = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "categories"
+        ordering = ["sort_order", "name"]
+        unique_together = ["slug", "animal_type", "parent"]
+
+    def save(self, *args, **kwargs):
+        if self.parent:
+            self.level = self.parent.level + 1
+        else:
+            self.level = 0
+
+        if not self.slug:
+            self.slug = self.generate_slug()
+
+        super().save(*args, **kwargs)
+
+    def generate_slug(self):
+        base_slug = slugify(self.name)
+        slug = base_slug
+        counter = 1
+
+        while Category.objects.filter(
+            slug=slug, animal_type=self.animal_type, parent=self.parent
+        ).exists():
+            slug = f"{base_slug}-{counter}"
+            counter += 1
+
+        return slug
+
+    def __str__(self):
+        return f"{'--' * self.level} {self.name} ({self.animal_type})"
 
 
 class Product(models.Model):
