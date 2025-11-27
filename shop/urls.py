@@ -10,9 +10,7 @@ urlpatterns = [
     path("google-auth/", GoogleAuthView.as_view(), name="google_auth"),
     path("token/refresh/", CustomTokenRefreshView.as_view(), name="token_refresh"),
     # Animal Types CRUD
-    path(
-        "animal-types/", views.AnimalTypeListView.as_view(), name="animal-type-list"
-    ),
+    path("animal-types/", views.AnimalTypeListView.as_view(), name="animal-type-list"),
     path(
         "animal-types/create/",
         views.AnimalTypeCreateView.as_view(),
