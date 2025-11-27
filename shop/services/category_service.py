@@ -6,10 +6,10 @@ class CategoryTreeService:
 
     @staticmethod
     def get_full_tree(animal_type_slug: str, max_depth: int = 3):
-        cache_key = f"full_category_tree_{animal_type_slug}_depth{max_depth}"
-        cached = cache.get(cache_key)
-        if cached:
-            return cached
+        # cache_key = f"full_category_tree_{animal_type_slug}_depth{max_depth}"
+        # cached = cache.get(cache_key)
+        # if cached:
+        #     return cached
 
         try:
             all_categories = (
@@ -24,7 +24,7 @@ class CategoryTreeService:
             )
 
             tree = CategoryTreeService._build_tree_structure(all_categories)
-            cache.set(cache_key, tree, timeout=3600)
+            # cache.set(cache_key, tree, timeout=3600)
             return tree
         except Exception:
             return []
@@ -91,10 +91,11 @@ class CategoryTreeService:
 
     @staticmethod
     def clear_cache(animal_type_slug: str):
-        cache_keys = [
-            f"full_category_tree_{animal_type_slug}_depth1",
-            f"full_category_tree_{animal_type_slug}_depth2",
-            f"full_category_tree_{animal_type_slug}_depth3",
-        ]
-        for key in cache_keys:
-            cache.delete(key)
+        # cache_keys = [
+        #     f"full_category_tree_{animal_type_slug}_depth1",
+        #     f"full_category_tree_{animal_type_slug}_depth2",
+        #     f"full_category_tree_{animal_type_slug}_depth3",
+        # ]
+        # for key in cache_keys:
+        #     cache.delete(key)
+        pass

@@ -335,8 +335,9 @@ def cache_test(request):
 @permission_classes([permissions.IsAdminUser])
 def clear_categories_cache(request, animal_type_slug):
     """Clear categories cache (Admin only)"""
-    CategoryTreeService.clear_cache(animal_type_slug)
-    return Response({"status": "cache cleared"})
+    # CategoryTreeService.clear_cache(animal_type_slug)
+    # return Response({"status": "cache cleared"})
+    return JsonResponse({"status": "Cache clearing disabled temporarily"})
 
 
 @api_view(["GET"])
