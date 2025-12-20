@@ -10,9 +10,9 @@ from shop.views import index, health_check
 
 schema_view = get_schema_view(
     openapi.Info(
-        title="Auth API",
+        title="Zoony API",
         default_version="v1",
-        description="User authentication API",
+        description="Full Zoony API",
     ),
     public=True,
     permission_classes=[permissions.AllowAny],
@@ -25,7 +25,8 @@ urlpatterns = [
         schema_view.with_ui("swagger", cache_timeout=0),
         name="schema-swagger-ui",
     ),
-    path("api/auth/", include("shop.urls")),
+    path("api/auth/", include("shop.auth_urls")),
+    path("api/", include("shop.urls")),
     path("", index, name="home"),
     path("health/", views.health_check, name="health-check"),
 ]

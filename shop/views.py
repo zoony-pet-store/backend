@@ -1,7 +1,11 @@
+from django.db.models import Prefetch, Min, Q
+from django.core.cache import cache
 from django.http import HttpRequest, HttpResponse, JsonResponse
-from django.shortcuts import render
+from django.shortcuts import render, get_object_or_404
+from rest_framework.pagination import PageNumberPagination
+from rest_framework.filters import OrderingFilter
+from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import status, generics, permissions
-from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -11,19 +15,27 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 
-from .models import Product, Customer, Category, AnimalType
+from .models import (
+    Product,
+    Customer,
+    Category,
+    AnimalType,
+    ProductImage,
+    ProductVariant,
+    ProductReview,
+    Brand,
+)
 from .serializers import (
     UserRegisterSerializer,
     LoginSerializer,
     GoogleAuthSerializer,
-    CategoryMinimalSerializer,
-    CategoryDetailSerializer,
-    CategoryCreateUpdateSerializer,
-    CategoryTreeSerializer,
-    AnimalTypeCreateSerializer,
-    AnimalTypeSerializer,
+    BrandSerializer,
+    ProductCardSerializer,
+    ProductDetailSerializer,
+    ProductVariantSerializer,
+    AnimalTypeWithCategoriesSerializer,
+    CategoryWithChildrenSerializer,
 )
-from .services.category_service import CategoryTreeService
 
 
 def health_check(request):
@@ -124,278 +136,307 @@ class CustomTokenRefreshView(TokenRefreshView):
         return super().post(request, *args, **kwargs)
 
 
-# AnimalType Views
-class AnimalTypeListView(generics.ListAPIView):
-    """List all active animal types"""
-
-    permission_classes = [permissions.AllowAny]
-    queryset = AnimalType.objects.filter(is_active=True)
-    serializer_class = AnimalTypeSerializer
-
-
-class AnimalTypeDetailView(generics.RetrieveAPIView):
-    """Retrieve specific animal type details"""
-
-    permission_classes = [permissions.AllowAny]
-    queryset = AnimalType.objects.filter(is_active=True)
-    serializer_class = AnimalTypeSerializer
-    lookup_field = "slug"
-
-
-class AnimalTypeCreateView(generics.CreateAPIView):
-    """Create new animal type (Admin only)"""
-
-    permission_classes = [permissions.IsAdminUser]
-    queryset = AnimalType.objects.all()
-    serializer_class = AnimalTypeCreateSerializer
-
-
-class AnimalTypeUpdateView(generics.UpdateAPIView):
-    """Update animal type (Admin only)"""
-
-    permission_classes = [permissions.IsAdminUser]
-    queryset = AnimalType.objects.all()
-    serializer_class = AnimalTypeSerializer
-    lookup_field = "slug"
-
-
-class AnimalTypeDeleteView(generics.DestroyAPIView):
-    """Delete animal type (Admin only)"""
-
-    permission_classes = [permissions.IsAdminUser]
-    queryset = AnimalType.objects.all()
-    serializer_class = AnimalTypeSerializer
-    lookup_field = "slug"
-
-    def perform_destroy(self, instance):
-        instance.is_active = False
-        instance.save()
-
-
-# Category Views
-class CategoryTreeView(generics.GenericAPIView):
-    """Get category tree with configurable depth"""
-
+class AnimalTypeCategoriesView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def get(self, request, animal_type_slug):
-        depth = int(request.query_params.get("depth", 2))
-
-        try:
-            AnimalType.objects.get(slug=animal_type_slug, is_active=True)
-            tree_data = CategoryTreeService.get_full_tree(animal_type_slug, depth)
-            serializer = CategoryTreeSerializer(tree_data)
-            return Response(serializer.data)
-        except AnimalType.DoesNotExist:
-            return Response(
-                {"error": "Animal type not found"}, status=status.HTTP_404_NOT_FOUND
-            )
-
-
-class CategoryDetailView(generics.RetrieveAPIView):
-    """Retrieve detailed category information"""
-
-    permission_classes = [permissions.AllowAny]
-    serializer_class = CategoryDetailSerializer
-    lookup_field = "slug"
-
-    def get_queryset(self):
-        return Category.objects.filter(
-            is_active=True,
-            animal_type__slug=self.kwargs["animal_type_slug"],
-            animal_type__is_active=True,
-        ).select_related("animal_type", "parent")
-
-
-class CategoryCreateView(generics.CreateAPIView):
-    """Create new category (Admin only)"""
-
-    permission_classes = [permissions.IsAdminUser]
-    queryset = Category.objects.all()
-    serializer_class = CategoryCreateUpdateSerializer
-
-    def perform_create(self, serializer):
-        instance = serializer.save()
-        CategoryTreeService.clear_cache(instance.animal_type.slug)
-
-
-class CategoryUpdateView(generics.UpdateAPIView):
-    """Update category (Admin only)"""
-
-    permission_classes = [permissions.IsAdminUser]
-    queryset = Category.objects.all()
-    serializer_class = CategoryCreateUpdateSerializer
-    lookup_field = "slug"
-
-    def perform_update(self, serializer):
-        instance = serializer.save()
-        CategoryTreeService.clear_cache(instance.animal_type.slug)
-
-
-class CategoryDeleteView(generics.DestroyAPIView):
-    """Delete category (Admin only)"""
-
-    permission_classes = [permissions.IsAdminUser]
-    queryset = Category.objects.all()
-    serializer_class = CategoryDetailSerializer
-    lookup_field = "slug"
-
-    def perform_destroy(self, instance):
-        animal_type_slug = instance.animal_type.slug
-        instance.is_active = False
-        instance.save()
-        CategoryTreeService.clear_cache(animal_type_slug)
-
-
-class SubcategoriesListView(generics.ListAPIView):
-    """List subcategories for specific category"""
-
-    permission_classes = [permissions.AllowAny]
-    serializer_class = CategoryMinimalSerializer
-
-    def get_queryset(self):
-        return Category.objects.filter(
-            animal_type__slug=self.kwargs["animal_type_slug"],
-            parent__slug=self.kwargs["category_slug"],
-            is_active=True,
-        ).order_by("sort_order", "name")
-
-
-class LeafCategoriesView(generics.ListAPIView):
-    """Get all leaf categories (for filters)"""
-
-    permission_classes = [permissions.AllowAny]
-    serializer_class = CategoryMinimalSerializer
-
-    def get_queryset(self):
-        return CategoryTreeService.get_leaf_categories(self.kwargs["animal_type_slug"])
-
-
-class CategorySearchView(generics.ListAPIView):
-    """Search categories by name"""
-
-    permission_classes = [permissions.AllowAny]
-    serializer_class = CategoryMinimalSerializer
-
-    def get_queryset(self):
-        search_query = self.request.query_params.get("q", "")
-        animal_type_slug = self.kwargs.get("animal_type_slug")
-
-        queryset = Category.objects.filter(is_active=True, animal_type__is_active=True)
-
-        if animal_type_slug:
-            queryset = queryset.filter(animal_type__slug=animal_type_slug)
-
-        if search_query:
-            queryset = queryset.filter(name__icontains=search_query)
-
-        return queryset.order_by("sort_order", "name")
-
-
-@api_view(["GET"])
-@permission_classes([permissions.AllowAny])
-def cache_test(request):
-    """Test Redis cache functionality"""
-    from django.core.cache import cache
-    import time
-
-    # Test data
-    test_data = {
-        "timestamp": time.time(),
-        "message": "Hello from Redis!",
-        "status": "cached",
-    }
-
-    # Try to write to cache
-    try:
-        cache.set("test_key", test_data, 60)  # 60 seconds
-        cached_value = cache.get("test_key")
-
-        # Get cache info without using protected members
-        cache_info = {
-            "backend": cache.__class__.__name__,
-            "location": "redis://127.0.0.1:6379/1",
-        }
-
-        return Response(
-            {
-                "redis_working": cached_value is not None,
-                "cached_data": cached_value,
-                "cache_info": cache_info,
-                "status": "SUCCESS" if cached_value else "FAILED",
-            }
-        )
-    except Exception as e:
-        return Response(
-            {"redis_working": False, "error": str(e), "status": "ERROR"}, status=500
+        animal_type = get_object_or_404(
+            AnimalType, slug=animal_type_slug, is_active=True
         )
 
-
-@api_view(["POST"])
-@permission_classes([permissions.IsAdminUser])
-def clear_categories_cache(request, animal_type_slug):
-    """Clear categories cache (Admin only)"""
-    # CategoryTreeService.clear_cache(animal_type_slug)
-    # return Response({"status": "cache cleared"})
-    return JsonResponse({"status": "Cache clearing disabled temporarily"})
-
-
-@api_view(["GET"])
-@permission_classes([permissions.AllowAny])
-def category_stats(request, animal_type_slug):
-    """Get category statistics"""
-    try:
-        total_categories = Category.objects.filter(
-            animal_type__slug=animal_type_slug, is_active=True
-        ).count()
-
-        leaf_categories = CategoryTreeService.get_leaf_categories(
-            animal_type_slug
-        ).count()
-
-        return Response(
-            {
-                "total_categories": total_categories,
-                "leaf_categories": leaf_categories,
-                "animal_type": animal_type_slug,
-            }
+        serializer = AnimalTypeWithCategoriesSerializer(
+            animal_type, context={"max_depth": 2}
         )
-    except Exception as e:
-        return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(serializer.data)
 
 
-@api_view(["GET"])
-def api_slugs_info(request):
-    """Повертає інформацію про доступні slug для тестування"""
-    animal_types = AnimalType.objects.filter(is_active=True)
+class CategoryDetailView(APIView):
+    permission_classes = [permissions.AllowAny]
 
-    data = {
-        "animal_types": [],
-        "testing_examples": [
-            "/api/categories/dogs/food/subcategories/",
-            "/api/categories/dogs/care-hygiene/subcategories/",
-            "/api/categories/cats/food/subcategories/",
-            "/api/categories/cats/care-hygiene/subcategories/",
-        ],
-    }
+    def get(self, request, animal_type_slug, category_path):
+        # (food or food/dry-food)
+        path_parts = category_path.strip("/").split("/")
 
-    for animal in animal_types:
-        animal_data = {"name": animal.name, "slug": animal.slug, "categories": []}
+        animal_type = get_object_or_404(
+            AnimalType, slug=animal_type_slug, is_active=True
+        )
 
         categories = Category.objects.filter(
-            animal_type=animal, parent__isnull=True
-        ).select_related("animal_type")
+            animal_type=animal_type,
+            parent__isnull=True,
+            is_active=True,
+        )
 
-        for category in categories:
-            category_data = {
-                "name": category.name,
-                "slug": category.slug,
-                "subcategories": list(
-                    Category.objects.filter(parent=category).values("name", "slug")
+        current_category = None
+        for i, slug in enumerate(path_parts):
+            if i == 0:
+                current_category = get_object_or_404(categories, slug=slug)
+            else:
+                current_category = get_object_or_404(
+                    current_category.children.filter(is_active=True), slug=slug
+                )
+
+        current_category = (
+            Category.objects.filter(pk=current_category.pk)
+            .prefetch_related(
+                Prefetch("children", queryset=Category.objects.filter(is_active=True))
+            )
+            .first()
+        )
+
+        serializer = CategoryWithChildrenSerializer(current_category)
+
+        return Response({"category": serializer.data})
+
+
+class ProductPagination(PageNumberPagination):
+    """Custom pagination for products"""
+
+    page_size = 24
+    page_size_query_param = "page_size"
+    max_page_size = 100
+
+
+class ProductListView(generics.ListAPIView):
+    """
+    List all products with filtering, sorting and pagination.
+    Supports filtering by category, brand, animal type, price range, etc.
+    """
+
+    permission_classes = [permissions.AllowAny]
+    serializer_class = ProductCardSerializer
+    pagination_class = ProductPagination
+    filter_backends = [DjangoFilterBackend, OrderingFilter]
+
+    # Fields for DjangoFilterBackend
+    filterset_fields = {
+        "category": ["exact"],
+        "brand": ["exact"],
+        "rating": ["gte", "lte"],
+        "is_featured": ["exact"],
+        "category__animal_type__slug": ["exact"],
+    }
+
+    # Fields available for ordering
+    ordering_fields = ["name", "rating", "created_at", "review_count"]
+    ordering = ["-created_at"]  # Default ordering
+
+    def get_queryset(self):
+        """Build optimized queryset with all filters applied"""
+        queryset = Product.objects.filter(is_active=True)
+
+        # Filter by price range
+        price_min = self.request.query_params.get("price_min")
+        price_max = self.request.query_params.get("price_max")
+
+        if price_min or price_max:
+            variants_qs = ProductVariant.objects.filter(is_active=True)
+            if price_min:
+                variants_qs = variants_qs.filter(price__gte=price_min)
+            if price_max:
+                variants_qs = variants_qs.filter(price__lte=price_max)
+
+            product_ids = variants_qs.values_list("product_id", flat=True).distinct()
+            queryset = queryset.filter(id__in=product_ids)
+
+        # Search by text
+        search = self.request.query_params.get("search")
+        if search:
+            queryset = queryset.filter(
+                Q(name__icontains=search)
+                | Q(description__icontains=search)
+                | Q(brand__name__icontains=search)
+                | Q(category__name__icontains=search)
+            )
+
+        # Filter by stock availability
+        in_stock = self.request.query_params.get("in_stock")
+        if in_stock == "true":
+            variants_in_stock = (
+                ProductVariant.objects.filter(is_active=True, stock__gt=0)
+                .values_list("product_id", flat=True)
+                .distinct()
+            )
+            queryset = queryset.filter(id__in=variants_in_stock)
+
+        # Optimize queries with select_related and prefetch_related
+        queryset = (
+            queryset.select_related("brand", "category", "category__animal_type")
+            .prefetch_related(
+                Prefetch(
+                    "images", queryset=ProductImage.objects.order_by("display_order")
                 ),
-            }
-            animal_data["categories"].append(category_data)
+                Prefetch(
+                    "variants",
+                    queryset=ProductVariant.objects.filter(
+                        is_active=True
+                    ).prefetch_related("attributes"),
+                ),
+            )
+            .distinct()
+        )
 
-        data["animal_types"].append(animal_data)
+        return queryset
 
-    return Response(data)
+
+class ProductDetailView(generics.RetrieveAPIView):
+    """
+    Retrieve detailed information about a specific product.
+    Includes variants, images, reviews, and all related data.
+    """
+
+    permission_classes = [permissions.AllowAny]
+    serializer_class = ProductDetailSerializer
+    lookup_field = "id"
+    lookup_url_kwarg = "product_id"
+
+    def get_queryset(self):
+        return (
+            Product.objects.filter(is_active=True)
+            .select_related("brand", "category", "category__animal_type")
+            .prefetch_related(
+                Prefetch(
+                    "images", queryset=ProductImage.objects.order_by("display_order")
+                ),
+                Prefetch(
+                    "variants",
+                    queryset=ProductVariant.objects.filter(
+                        is_active=True
+                    ).prefetch_related("attributes", "images"),
+                ),
+                Prefetch(
+                    "reviews", queryset=ProductReview.objects.filter(is_active=True)
+                ),
+            )
+        )
+
+
+class BrandListView(generics.ListAPIView):
+    """List all active brands"""
+
+    permission_classes = [permissions.AllowAny]
+    queryset = Brand.objects.filter(is_active=True).order_by("name")
+    serializer_class = BrandSerializer
+
+
+class BrandDetailView(generics.RetrieveAPIView):
+    """Retrieve detailed information about a specific brand"""
+
+    permission_classes = [permissions.AllowAny]
+    serializer_class = BrandSerializer
+    lookup_field = "slug"
+
+    def get_queryset(self):
+        return Brand.objects.filter(is_active=True)
+
+
+class FeaturedProductsView(generics.ListAPIView):
+    """Get featured products (usually for homepage or promotions)"""
+
+    permission_classes = [permissions.AllowAny]
+    serializer_class = ProductCardSerializer
+
+    def get_queryset(self):
+        return (
+            Product.objects.filter(is_active=True, is_featured=True)
+            .select_related("brand", "category")
+            .prefetch_related("images", "variants")
+            .order_by("-rating", "-review_count")[:12]
+        )
+
+
+class RelatedProductsView(generics.ListAPIView):
+    """Get related products for a specific product"""
+
+    permission_classes = [permissions.AllowAny]
+    serializer_class = ProductCardSerializer
+
+    def get_queryset(self):
+        product_id = self.kwargs["product_id"]
+
+        try:
+            product = Product.objects.get(id=product_id, is_active=True)
+            return (
+                Product.objects.filter(category=product.category, is_active=True)
+                .exclude(id=product_id)
+                .select_related("brand", "category")
+                .prefetch_related("images", "variants")
+                .order_by("-rating", "-review_count")[:6]
+            )
+        except Product.DoesNotExist:
+            return Product.objects.none()
+
+
+class ProductSearchView(generics.ListAPIView):
+    """
+    Search products by text query.
+    Searches in name, description, brand name, and category name.
+    """
+
+    permission_classes = [permissions.AllowAny]
+    serializer_class = ProductCardSerializer
+    pagination_class = ProductPagination
+
+    def get_queryset(self):
+        query = self.request.query_params.get("q", "").strip()
+        if not query or len(query) < 2:
+            return Product.objects.none()
+
+        return (
+            Product.objects.filter(
+                Q(name__icontains=query)
+                | Q(description__icontains=query)
+                | Q(short_description__icontains=query)
+                | Q(brand__name__icontains=query)
+                | Q(category__name__icontains=query)
+            )
+            .filter(is_active=True)
+            .select_related("brand", "category")
+            .prefetch_related("images", "variants")
+            .distinct()
+        )
+
+
+class CategoryProductsView(generics.ListAPIView):
+    """
+    Simple version that finds category by last slug in path.
+    """
+
+    permission_classes = [permissions.AllowAny]
+    serializer_class = ProductCardSerializer
+    pagination_class = ProductPagination
+
+    def get_queryset(self):
+        animal_type_slug = self.kwargs["animal_type_slug"]
+        category_path = self.kwargs["category_path"]
+
+        print(f"=== DEBUG ===")
+        print(f"Request: animal_type_slug={animal_type_slug}, category_path={category_path}")
+
+        # Get the last part of the path
+        target_slug = category_path.strip("/").split("/")[-1]
+        print(f"Target slug: {target_slug}")
+
+        # Try to find the category
+        try:
+            animal_type = AnimalType.objects.get(slug=animal_type_slug, is_active=True)
+            print(f"Found animal_type: {animal_type}")
+
+            # Try to find category with this slug for this animal_type
+            category = Category.objects.get(
+                animal_type=animal_type,
+                slug=target_slug,
+                is_active=True
+            )
+            print(f"Found category: {category.name} (parent: {category.parent})")
+
+            # Get products in this category (just this category, not subcategories)
+            products = Product.objects.filter(category=category, is_active=True)
+            print(f"Found {products.count()} products")
+
+            return products.select_related("brand", "category").prefetch_related("images", "variants")
+
+        except (AnimalType.DoesNotExist, Category.DoesNotExist) as e:
+            print(f"ERROR: {e}")
+            return Product.objects.none()
