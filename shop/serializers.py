@@ -287,7 +287,7 @@ class CategoryTreeSerializer(CategorySerializer):
 
         # Hide image_url for root categories (parent is None)
         if instance.parent is None:
-            representation.pop('image_url', None)
+            representation.pop("image_url", None)
 
         return representation
 

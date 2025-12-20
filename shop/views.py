@@ -412,7 +412,9 @@ class CategoryProductsView(generics.ListAPIView):
         category_path = self.kwargs["category_path"]
 
         print(f"=== DEBUG ===")
-        print(f"Request: animal_type_slug={animal_type_slug}, category_path={category_path}")
+        print(
+            f"Request: animal_type_slug={animal_type_slug}, category_path={category_path}"
+        )
 
         # Get the last part of the path
         target_slug = category_path.strip("/").split("/")[-1]
@@ -425,9 +427,7 @@ class CategoryProductsView(generics.ListAPIView):
 
             # Try to find category with this slug for this animal_type
             category = Category.objects.get(
-                animal_type=animal_type,
-                slug=target_slug,
-                is_active=True
+                animal_type=animal_type, slug=target_slug, is_active=True
             )
             print(f"Found category: {category.name} (parent: {category.parent})")
 
@@ -435,7 +435,9 @@ class CategoryProductsView(generics.ListAPIView):
             products = Product.objects.filter(category=category, is_active=True)
             print(f"Found {products.count()} products")
 
-            return products.select_related("brand", "category").prefetch_related("images", "variants")
+            return products.select_related("brand", "category").prefetch_related(
+                "images", "variants"
+            )
 
         except (AnimalType.DoesNotExist, Category.DoesNotExist) as e:
             print(f"ERROR: {e}")
