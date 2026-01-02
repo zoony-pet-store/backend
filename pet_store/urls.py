@@ -1,12 +1,11 @@
-from django.contrib import admin
 from django.urls import path, include
-from django.conf import settings
 from django.contrib.staticfiles.urls import staticfiles_urlpatterns
 from rest_framework import permissions
 from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
 from shop import views
 from shop.views import index, health_check
+from shop.admin import admin_site
 
 schema_view = get_schema_view(
     openapi.Info(
@@ -19,7 +18,7 @@ schema_view = get_schema_view(
 )
 
 urlpatterns = [
-    path("admin/", admin.site.urls),
+    path("admin", admin_site.urls),
     path(
         "api/docs/",
         schema_view.with_ui("swagger", cache_timeout=0),
