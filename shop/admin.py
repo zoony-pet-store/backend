@@ -24,6 +24,7 @@ from .models import (
     AnimalType,
     Category,
     Brand,
+    Badge,
     Product,
     ProductAttribute,
     ProductAttributeValue,
@@ -75,6 +76,7 @@ class ProductForm(forms.ModelForm):
             "description": forms.Textarea(attrs={"rows": 5}),
             "nutritional_value": forms.Textarea(attrs={"rows": 3}),
             "feeding_table": forms.Textarea(attrs={"rows": 3}),
+            "badges": forms.CheckboxSelectMultiple(),
         }
 
     def __init__(self, *args, **kwargs):
@@ -406,6 +408,64 @@ class BrandAdmin(admin.ModelAdmin):
     logo_preview.short_description = "Logo Preview"
 
 
+@admin.register(Badge)
+class BadgeAdmin(admin.ModelAdmin):
+    """Admin interface for Badge model"""
+
+    list_display = (
+        "name",
+        "slug",
+        "label",
+        "color_preview",
+        "is_active",
+        "product_count",
+        "created_at",
+    )
+    list_filter = ("is_active", "created_at")
+    search_fields = ("name", "slug", "label")
+    prepopulated_fields = {"slug": ("name",)}
+    list_editable = ("is_active",)
+
+    fieldsets = (
+        (_("Basic Information"), {"fields": ("name", "slug", "label")}),
+        (_("Colors"), {"fields": ("color", "background_color", "color_preview")}),
+        (_("Status"), {"fields": ("is_active",)}),
+        (
+            _("Statistics"),
+            {"fields": ("product_count",), "classes": ("collapse",)},
+        ),
+        (
+            _("Dates"),
+            {"fields": ("created_at",), "classes": ("collapse",)},
+        ),
+    )
+
+    readonly_fields = ("product_count", "color_preview", "created_at")
+
+    def product_count(self, obj):
+        """Return count of products with this badge"""
+        return obj.products.count()
+
+    product_count.short_description = "Products"
+
+    def color_preview(self, obj):
+        """Return HTML for color preview"""
+        return format_html(
+            """
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <div style="width: 50px; height: 20px; background-color: {bg}; border: 1px solid #ccc;"></div>
+                <span>Background: {bg}</span>
+                <div style="width: 50px; height: 20px; background-color: {color}; border: 1px solid #ccc;"></div>
+                <span>Text: {color}</span>
+            </div>
+            """,
+            bg=obj.background_color,
+            color=obj.color,
+        )
+
+    color_preview.short_description = "Color Preview"
+
+
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
     """Admin interface for Product model"""
@@ -417,6 +477,7 @@ class ProductAdmin(admin.ModelAdmin):
         "category",
         "price_range",
         "stock_status",
+        "badges_display",
         "rating",
         "is_active",
         "is_featured",
@@ -462,7 +523,7 @@ class ProductAdmin(admin.ModelAdmin):
                 )
             },
         ),
-        (_("Pricing & Status"), {"fields": ("is_active", "is_featured")}),
+        (_("Pricing & Status"), {"fields": ("is_active", "is_featured", "badges")}),
         (
             _("Product Details"),
             {
@@ -600,6 +661,24 @@ class ProductAdmin(admin.ModelAdmin):
 
     feature_products.short_description = "Mark as featured"
 
+    def badges_display(self, obj):
+        """Return formatted badges for display in list"""
+        badges = obj.badges.filter(is_active=True)
+        if not badges.exists():
+            return "-"
+
+        badges_html = []
+        for badge in badges:
+            badges_html.append(
+                f'<span style="background-color: {badge.background_color}; '
+                f"color: {badge.color}; padding: 2px 6px; border-radius: 3px; "
+                f'font-size: 11px; margin-right: 3px; display: inline-block;">{badge.label}</span>'
+            )
+
+        return format_html("".join(badges_html))
+
+    badges_display.short_description = "Badges"
+
     def unfeature_products(self, request, queryset):
         """Remove selected products from featured"""
         queryset.update(is_featured=False)
@@ -607,10 +686,13 @@ class ProductAdmin(admin.ModelAdmin):
     unfeature_products.short_description = "Remove from featured"
 
     def get_queryset(self, request):
+        """Optimize queries for product admin list view"""
+        # request parameter is required by Django Admin
         return (
             super()
             .get_queryset(request)
             .select_related("brand", "category", "category__animal_type")
+            .prefetch_related("badges", "images", "variants")
         )
 
 
@@ -918,6 +1000,7 @@ admin_site.register(Customer, CustomerAdmin)
 admin_site.register(AnimalType, AnimalTypeAdmin)
 admin_site.register(Category, CategoryAdmin)
 admin_site.register(Brand, BrandAdmin)
+admin_site.register(Badge, BadgeAdmin)
 admin_site.register(Product, ProductAdmin)
 admin_site.register(ProductVariant, ProductVariantAdmin)
 admin_site.register(ProductAttribute, ProductAttributeAdmin)

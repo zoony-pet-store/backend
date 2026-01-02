@@ -4,6 +4,7 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.validators import validate_email
 from django.core.exceptions import ValidationError, ObjectDoesNotExist
 from django.utils.translation import gettext_lazy as _
+from django.utils import timezone
 from google.oauth2 import id_token
 from google.auth.transport import requests
 from django.conf import settings
@@ -12,6 +13,7 @@ from .models import (
     Category,
     AnimalType,
     Brand,
+    Badge,
     ProductAttributeValue,
     ProductVariant,
     ProductImage,
@@ -416,6 +418,15 @@ class ProductReviewSerializer(serializers.ModelSerializer):
         read_only_fields = ["user"]
 
 
+class BadgeSerializer(serializers.ModelSerializer):
+    """Serializer for Badge model"""
+
+    class Meta:
+        model = Badge
+        fields = ["id", "name", "slug", "label", "color", "background_color"]
+        read_only_fields = ["id"]
+
+
 class ProductCardSerializer(serializers.ModelSerializer):
     """Serializer for product short version (product card in listings)"""
 
@@ -487,26 +498,114 @@ class ProductCardSerializer(serializers.ModelSerializer):
         return obj.variants.filter(is_active=True, stock__gt=0).exists()
 
     def get_badges(self, obj):
-        badges = []
-        from django.utils import timezone
+        badges_list = []
+
+        badge_objects = obj.badges.filter(is_active=True)
+        for badge in badge_objects:
+            badges_list.append(
+                {
+                    "name": badge.name,
+                    "label": badge.label,
+                    "color": badge.color,
+                    "background_color": badge.background_color,
+                    "type": "manual",
+                }
+            )
 
         # Bestseller badge
-        if obj.rating >= 4.5 and obj.review_count >= 10:
-            badges.append("bestseller")
+        if (
+            obj.rating >= 4.5
+            and obj.review_count >= 10
+            and not any(b["name"] == "bestseller" for b in badges_list)
+        ):
+            badges_list.append(
+                {
+                    "name": "bestseller",
+                    "label": "Bestseller",
+                    "color": "#000000",
+                    "background_color": "#FFD700",
+                    "type": "auto",
+                }
+            )
 
         # New arrival badge (last 30 days)
-        if obj.created_at > timezone.now() - timezone.timedelta(days=30):
-            badges.append("new")
+        if obj.created_at > timezone.now() - timezone.timedelta(days=30) and not any(
+            b["name"] == "new" for b in badges_list
+        ):
+            badges_list.append(
+                {
+                    "name": "new",
+                    "label": "New",
+                    "color": "#FFFFFF",
+                    "background_color": "#28A745",
+                    "type": "auto",
+                }
+            )
 
         # Discount badge
-        if obj.variants.filter(has_discount=True, is_active=True).exists():
-            badges.append("discount")
+        if obj.variants.filter(has_discount=True, is_active=True).exists() and not any(
+            b["name"] == "discount" for b in badges_list
+        ):
+            badges_list.append(
+                {
+                    "name": "discount",
+                    "label": "Discount",
+                    "color": "#FFFFFF",
+                    "background_color": "#DC3545",
+                    "type": "auto",
+                }
+            )
 
         # Featured badge
-        if obj.is_featured:
-            badges.append("featured")
+        if obj.is_featured and not any(b["name"] == "featured" for b in badges_list):
+            badges_list.append(
+                {
+                    "name": "featured",
+                    "label": "Featured",
+                    "color": "#FFFFFF",
+                    "background_color": "#6F42C1",
+                    "type": "auto",
+                }
+            )
 
-        return badges
+        # Sale badge
+        if obj.variants.filter(has_discount=True, is_active=True).exists():
+            max_discount = 0
+            for variant in obj.variants.filter(has_discount=True, is_active=True):
+                if (
+                    variant.discount_percentage
+                    and variant.discount_percentage > max_discount
+                ):
+                    max_discount = variant.discount_percentage
+
+            if max_discount >= 20 and not any(b["name"] == "sale" for b in badges_list):
+                badges_list.append(
+                    {
+                        "name": "sale",
+                        "label": f"Sale {max_discount}%",
+                        "color": "#FFFFFF",
+                        "background_color": "#FF6B6B",
+                        "type": "auto",
+                    }
+                )
+
+        # Trending badge
+        if (
+            obj.review_count >= 20
+            and obj.rating >= 4.0
+            and not any(b["name"] == "trending" for b in badges_list)
+        ):
+            badges_list.append(
+                {
+                    "name": "trending",
+                    "label": "Trending",
+                    "color": "#FFFFFF",
+                    "background_color": "#FD7E14",
+                    "type": "auto",
+                }
+            )
+
+        return badges_list
 
     def get_variants_display(self, obj):
         """Return variant display values for product card (e.g., ['1 l', '35x62'])"""

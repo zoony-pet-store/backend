@@ -149,6 +149,19 @@ class Brand(models.Model):
         super().save(*args, **kwargs)
 
 
+class Badge(models.Model):
+    name = models.CharField(max_length=50, unique=True)
+    slug = models.SlugField(max_length=50, unique=True)
+    label = models.CharField(max_length=50)
+    color = models.CharField(max_length=7, default="#000000")  # HEX color
+    background_color = models.CharField(max_length=7, default="#FFFFFF")
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.label
+
+
 class Product(models.Model):
     """Main product model"""
 
@@ -165,6 +178,7 @@ class Product(models.Model):
     )
     is_featured = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
+    badges = models.ManyToManyField(Badge, blank=True, related_name="products")
     rating = models.DecimalField(max_digits=3, decimal_places=2, default=0.0)
     review_count = models.IntegerField(default=0)
     meta_title = models.CharField(max_length=255, blank=True)
