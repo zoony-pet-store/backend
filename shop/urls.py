@@ -5,6 +5,8 @@ app_name = "shop"
 
 urlpatterns = [
     path("auth/", include("shop.auth_urls")),
+    # ========== DASHBOARD ==========
+    path("dashboard", views.DashboardView.as_view(), name="dashboard"),
     # ========== PRODUCTS ==========
     # Product collections
     path("products", views.ProductListView.as_view(), name="product-list"),

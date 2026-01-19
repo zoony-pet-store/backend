@@ -508,7 +508,6 @@ class ProductCardSerializer(serializers.ModelSerializer):
                     "label": badge.label,
                     "color": badge.color,
                     "background_color": badge.background_color,
-                    "type": "manual",
                 }
             )
 
@@ -524,7 +523,6 @@ class ProductCardSerializer(serializers.ModelSerializer):
                     "label": "Bestseller",
                     "color": "#000000",
                     "background_color": "#FFD700",
-                    "type": "auto",
                 }
             )
 
@@ -538,7 +536,6 @@ class ProductCardSerializer(serializers.ModelSerializer):
                     "label": "New",
                     "color": "#FFFFFF",
                     "background_color": "#28A745",
-                    "type": "auto",
                 }
             )
 
@@ -552,7 +549,6 @@ class ProductCardSerializer(serializers.ModelSerializer):
                     "label": "Discount",
                     "color": "#FFFFFF",
                     "background_color": "#DC3545",
-                    "type": "auto",
                 }
             )
 
@@ -564,7 +560,6 @@ class ProductCardSerializer(serializers.ModelSerializer):
                     "label": "Featured",
                     "color": "#FFFFFF",
                     "background_color": "#6F42C1",
-                    "type": "auto",
                 }
             )
 
@@ -585,7 +580,6 @@ class ProductCardSerializer(serializers.ModelSerializer):
                         "label": f"Sale {max_discount}%",
                         "color": "#FFFFFF",
                         "background_color": "#FF6B6B",
-                        "type": "auto",
                     }
                 )
 
@@ -601,7 +595,6 @@ class ProductCardSerializer(serializers.ModelSerializer):
                     "label": "Trending",
                     "color": "#FFFFFF",
                     "background_color": "#FD7E14",
-                    "type": "auto",
                 }
             )
 

@@ -1,5 +1,7 @@
-from django.db.models import Prefetch, Min, Q
-from django.core.cache import cache
+from django.utils import timezone
+from datetime import timedelta
+
+from django.db.models import Prefetch, Q
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import render, get_object_or_404
 from rest_framework.pagination import PageNumberPagination
@@ -310,6 +312,61 @@ class ProductDetailView(generics.RetrieveAPIView):
                 ),
             )
         )
+
+
+class DashboardView(APIView):
+    """
+    1. New arrivals (20 newest products from last 30 days)
+    2. Best sellers (20 products with highest rating)
+    3. Discounted products (20 products with discounts)
+    """
+
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+
+        thirty_days_ago = timezone.now() - timedelta(days=30)
+        new_arrivals = (
+            Product.objects.filter(created_at__gte=thirty_days_ago, is_active=True)
+            .select_related("brand", "category", "category__animal_type")
+            .prefetch_related("images", "variants")
+            .order_by("-created_at")[:20]
+        )
+
+        best_sellers = (
+            Product.objects.filter(
+                rating__gte=4.5, review_count__gte=10, is_active=True
+            )
+            .select_related("brand", "category", "category__animal_type")
+            .prefetch_related("images", "variants")
+            .order_by("-rating", "-review_count")[:20]
+        )
+
+        discounted_products = (
+            Product.objects.filter(
+                variants__has_discount=True, variants__is_active=True, is_active=True
+            )
+            .distinct()
+            .select_related("brand", "category", "category__animal_type")
+            .prefetch_related("images", "variants")
+            .order_by("-created_at")[:20]
+        )
+
+        context = {"request": request}
+
+        data = {
+            "new_arrivals": ProductCardSerializer(
+                new_arrivals, many=True, context=context
+            ).data,
+            "best_sellers": ProductCardSerializer(
+                best_sellers, many=True, context=context
+            ).data,
+            "discounted_products": ProductCardSerializer(
+                discounted_products, many=True, context=context
+            ).data,
+        }
+
+        return Response(data)
 
 
 class BrandListView(generics.ListAPIView):
