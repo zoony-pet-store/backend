@@ -207,7 +207,7 @@ class BrandAdmin(admin.ModelAdmin):
 class ProductAdmin(admin.ModelAdmin):
     list_display = ("name", "brand", "category", "is_active", "created_at")
     list_select_related = ("brand", "category", "category__animal_type")
-
+    search_fields = ("name", "description", "brand__name", "category__name")
     inlines = (ProductVariantInline, ProductImageInline)
 
     def save_model(self, request, obj, form, change):
@@ -234,6 +234,7 @@ class ProductVariantAdmin(admin.ModelAdmin):
     list_display = ("sku", "product", "price", "stock", "is_active")
     list_select_related = ("product", "product__brand")
     autocomplete_fields = ("product",)
+    search_fields = ("sku", "product__name", "product__brand__name")
 
     def save_model(self, request, obj, form, change):
         if not obj.sku:
@@ -249,6 +250,7 @@ class ProductVariantAdmin(admin.ModelAdmin):
 @admin.register(ProductAttribute)
 class ProductAttributeAdmin(admin.ModelAdmin):
     list_display = ("name", "filterable", "display_order")
+    search_fields = ("name",)
 
 
 @admin.register(ProductAttributeValue)
@@ -293,6 +295,7 @@ class ProductReviewAdmin(admin.ModelAdmin):
 class CartAdmin(admin.ModelAdmin):
     list_display = ("user", "total_items", "total_price", "created_at")
     inlines = (CartItemInline,)
+    search_fields = ("user__email", "user__first_name", "user__last_name")
 
     def get_queryset(self, request):
         return (
