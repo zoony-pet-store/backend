@@ -26,6 +26,7 @@ from .models import (
 # UTILITIES
 # ======================================================
 
+
 def generate_random_sku():
     """Generate UNIQUE SKU (collision-safe)."""
     prefix = "PROD-"
@@ -41,6 +42,7 @@ def generate_random_sku():
 # ======================================================
 # FORMS
 # ======================================================
+
 
 class CategoryForm(forms.ModelForm):
     class Meta:
@@ -72,6 +74,7 @@ class ProductVariantForm(forms.ModelForm):
 # INLINES
 # ======================================================
 
+
 class ProductImageInline(admin.TabularInline):
     model = ProductImage
     extra = 1
@@ -81,7 +84,9 @@ class ProductImageInline(admin.TabularInline):
 
     def preview(self, obj):
         if obj.image_url:
-            return format_html('<img src="{}" style="max-height:80px;"/>', obj.image_url)
+            return format_html(
+                '<img src="{}" style="max-height:80px;"/>', obj.image_url
+            )
         return "-"
 
 
@@ -103,6 +108,7 @@ class CartItemInline(admin.TabularInline):
 # CUSTOMER
 # ======================================================
 
+
 @admin.register(Customer)
 class CustomerAdmin(UserAdmin):
     ordering = ("-date_joined",)
@@ -114,14 +120,24 @@ class CustomerAdmin(UserAdmin):
 # ANIMAL TYPE
 # ======================================================
 
+
 @admin.register(AnimalType)
 class AnimalTypeAdmin(admin.ModelAdmin):
     list_display = ("name", "is_active", "category_count", "product_count")
 
     def get_queryset(self, request):
-        return super().get_queryset(request).annotate(
-            _category_count=Count("categories", filter=Q(categories__is_active=True)),
-            _product_count=Count("categories__products", filter=Q(categories__products__is_active=True)),
+        return (
+            super()
+            .get_queryset(request)
+            .annotate(
+                _category_count=Count(
+                    "categories", filter=Q(categories__is_active=True)
+                ),
+                _product_count=Count(
+                    "categories__products",
+                    filter=Q(categories__products__is_active=True),
+                ),
+            )
         )
 
     def category_count(self, obj):
@@ -135,6 +151,7 @@ class AnimalTypeAdmin(admin.ModelAdmin):
 # CATEGORY
 # ======================================================
 
+
 @admin.register(Category)
 class CategoryAdmin(admin.ModelAdmin):
     form = CategoryForm
@@ -142,8 +159,12 @@ class CategoryAdmin(admin.ModelAdmin):
     list_select_related = ("animal_type", "parent")
 
     def get_queryset(self, request):
-        return super().get_queryset(request).annotate(
-            _product_count=Count("products", filter=Q(products__is_active=True))
+        return (
+            super()
+            .get_queryset(request)
+            .annotate(
+                _product_count=Count("products", filter=Q(products__is_active=True))
+            )
         )
 
     def product_count(self, obj):
@@ -154,13 +175,18 @@ class CategoryAdmin(admin.ModelAdmin):
 # BRAND
 # ======================================================
 
+
 @admin.register(Brand)
 class BrandAdmin(admin.ModelAdmin):
     list_display = ("name", "is_active", "product_count", "logo")
 
     def get_queryset(self, request):
-        return super().get_queryset(request).annotate(
-            _product_count=Count("products", filter=Q(products__is_active=True))
+        return (
+            super()
+            .get_queryset(request)
+            .annotate(
+                _product_count=Count("products", filter=Q(products__is_active=True))
+            )
         )
 
     def product_count(self, obj):
@@ -175,6 +201,7 @@ class BrandAdmin(admin.ModelAdmin):
 # ======================================================
 # PRODUCT
 # ======================================================
+
 
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
@@ -201,6 +228,7 @@ class ProductAdmin(admin.ModelAdmin):
 # PRODUCT VARIANT
 # ======================================================
 
+
 @admin.register(ProductVariant)
 class ProductVariantAdmin(admin.ModelAdmin):
     list_display = ("sku", "product", "price", "stock", "is_active")
@@ -217,6 +245,7 @@ class ProductVariantAdmin(admin.ModelAdmin):
 # ATTRIBUTES
 # ======================================================
 
+
 @admin.register(ProductAttribute)
 class ProductAttributeAdmin(admin.ModelAdmin):
     list_display = ("name", "filterable", "display_order")
@@ -231,6 +260,7 @@ class ProductAttributeValueAdmin(admin.ModelAdmin):
 # ======================================================
 # IMAGES
 # ======================================================
+
 
 @admin.register(ProductImage)
 class ProductImageAdmin(admin.ModelAdmin):
@@ -247,6 +277,7 @@ class ProductImageAdmin(admin.ModelAdmin):
 # REVIEWS
 # ======================================================
 
+
 @admin.register(ProductReview)
 class ProductReviewAdmin(admin.ModelAdmin):
     list_display = ("product", "user", "rating", "is_active", "created_at")
@@ -257,15 +288,21 @@ class ProductReviewAdmin(admin.ModelAdmin):
 # CART
 # ======================================================
 
+
 @admin.register(Cart)
 class CartAdmin(admin.ModelAdmin):
     list_display = ("user", "total_items", "total_price", "created_at")
     inlines = (CartItemInline,)
 
     def get_queryset(self, request):
-        return super().get_queryset(request).select_related("user").annotate(
-            _items_sum=Sum("items__quantity"),
-            _price_sum=Sum("items__total_price"),
+        return (
+            super()
+            .get_queryset(request)
+            .select_related("user")
+            .annotate(
+                _items_sum=Sum("items__quantity"),
+                _price_sum=Sum("items__total_price"),
+            )
         )
 
     def total_items(self, obj):
@@ -278,6 +315,7 @@ class CartAdmin(admin.ModelAdmin):
 # ======================================================
 # CART ITEM
 # ======================================================
+
 
 @admin.register(CartItem)
 class CartItemAdmin(admin.ModelAdmin):
