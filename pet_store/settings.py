@@ -65,7 +65,6 @@ INSTALLED_APPS = [
     "corsheaders",
     "storages",
     "django_filters",
-    "shop",
 ]
 
 MIDDLEWARE = [
