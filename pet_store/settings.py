@@ -65,6 +65,7 @@ INSTALLED_APPS = [
     "corsheaders",
     "storages",
     "django_filters",
+    "shop",
 ]
 
 MIDDLEWARE = [
@@ -256,6 +257,9 @@ SOCIAL_AUTH_PIPELINE = (
 AXES_FAILURE_LIMIT = 5
 AXES_COOLOFF_TIME = 1
 AXES_LOCK_OUT_AT_FAILURE = True
+
+AXES_USER_MODEL = "shop.Customer"
+SOCIAL_AUTH_USER_MODEL = "shop.Customer"
 
 SWAGGER_SETTINGS = {
     "USE_SESSION_AUTH": False,
