@@ -9,3 +9,6 @@ class ShopConfig(AppConfig):
 
 class EcommerceAdminConfig(AdminConfig):
     default_site = "shop.admin.EcommerceAdminSite"
+
+    def ready(self):
+        pass
