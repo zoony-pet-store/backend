@@ -49,7 +49,7 @@ if DEBUG:
     )
 
 INSTALLED_APPS = [
-    "shop.apps.EcommerceAdminConfig",
+    "shop.admin_config.EcommerceAdminConfig",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
