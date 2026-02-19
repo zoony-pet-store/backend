@@ -49,7 +49,7 @@ if DEBUG:
     )
 
 INSTALLED_APPS = [
-    "shop.apps.EcommerceAdminConfig",
+    'shop.apps.EcommerceAdminConfig',
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
@@ -65,7 +65,7 @@ INSTALLED_APPS = [
     "corsheaders",
     "storages",
     "django_filters",
-    "shop.apps.ShopConfig",
+    "shop",
 ]
 
 MIDDLEWARE = [
@@ -189,7 +189,7 @@ REST_FRAMEWORK = {
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
     "DEFAULT_FILTER_BACKENDS": [
-        "django_filters.rest_framework.DjangoFilterBackend",
+        'django_filters.rest_framework.DjangoFilterBackend',
     ],
 }
 
