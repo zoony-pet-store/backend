@@ -19,9 +19,14 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-RUN useradd -m appuser && chown -R appuser /app
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+RUN useradd -m appuser && chown -R appuser /app /entrypoint.sh
 USER appuser
 
 EXPOSE 8080
 
-CMD ["gunicorn", "pet_store.wsgi:application", "--bind", "0.0.0.0:8080", "--workers", "2", "--timeout", "90"]
+ENTRYPOINT ["/entrypoint.sh"]
+
+# CMD ["gunicorn", "pet_store.wsgi:application", "--bind", "0.0.0.0:8080", "--workers", "2", "--timeout", "90"]
