@@ -507,11 +507,45 @@ class ProductImageUploadView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
 
+    @swagger_auto_schema(
+        operation_description="Upload product image to Cloudinary",
+        manual_parameters=[
+            openapi.Parameter(
+                name="product_id",
+                in_=openapi.IN_FORM,
+                type=openapi.TYPE_STRING,
+                required=True,
+                description="Product UUID",
+            ),
+            openapi.Parameter(
+                name="image",
+                in_=openapi.IN_FORM,
+                type=openapi.TYPE_FILE,
+                required=True,
+                description="Image file (max 5MB)",
+            ),
+        ],
+        responses={
+            201: openapi.Response(
+                description="Uploaded",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        "id": openapi.Schema(type=openapi.TYPE_STRING),
+                        "url": openapi.Schema(type=openapi.TYPE_STRING),
+                        "public_id": openapi.Schema(type=openapi.TYPE_STRING),
+                    },
+                ),
+            ),
+            400: "Bad Request",
+            401: "Unauthorized",
+        },
+    )
     def post(self, request):
-
         if "image" not in request.FILES:
             return Response(
-                {"error": "No image provided"}, status=status.HTTP_400_BAD_REQUEST
+                {"error": "No image provided"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         file = request.FILES["image"]
@@ -523,15 +557,19 @@ class ProductImageUploadView(APIView):
             )
 
         product_id = request.data.get("product_id")
-
         if not product_id:
             return Response(
-                {"error": "product_id is required"}, status=status.HTTP_400_BAD_REQUEST
+                {"error": "product_id is required"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         product = get_object_or_404(Product, id=product_id)
 
-        result = cloudinary.uploader.upload(file, folder="products")
+        result = cloudinary.uploader.upload(
+            file,
+            folder="products",
+            resource_type="image",
+        )
 
         image = ProductImage.objects.create(
             product=product,
@@ -541,7 +579,7 @@ class ProductImageUploadView(APIView):
 
         return Response(
             {
-                "id": image.id,
+                "id": str(image.id),
                 "url": image.image_url,
                 "public_id": image.cloudinary_public_id,
             },
