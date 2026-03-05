@@ -336,6 +336,7 @@ class ProductImage(models.Model):
     alt_text = models.CharField(max_length=255, blank=True)
     is_main = models.BooleanField(default=False)
     display_order = models.IntegerField(default=0)
+    cloudinary_public_id = models.CharField(max_length=255, blank=True, default="")
 
     class Meta:
         ordering = ["display_order", "id"]

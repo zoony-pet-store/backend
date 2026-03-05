@@ -7,6 +7,8 @@ urlpatterns = [
     path("auth/", include("shop.auth_urls")),
     # ========== DASHBOARD ==========
     path("dashboard", views.DashboardView.as_view(), name="dashboard"),
+    # ========== UPLOAD ==========
+    path("upload-image", views.ProductImageUploadView.as_view(), name="upload-image"),
     # ========== PRODUCTS ==========
     # Product collections
     path("products", views.ProductListView.as_view(), name="product-list"),
