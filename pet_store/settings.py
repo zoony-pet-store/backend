@@ -266,7 +266,14 @@ SOCIAL_AUTH_USER_MODEL = "shop.Customer"
 
 SWAGGER_SETTINGS = {
     "USE_SESSION_AUTH": False,
-    "SECURITY_DEFINITIONS": None,
+    "SECURITY_DEFINITIONS": {
+        "Bearer": {
+            "type": "apiKey",
+            "name": "Authorization",
+            "in": "header",
+            "description": 'JWT Authorization header. Example: "Bearer <token>"',
+        }
+    },
 }
 
 APPEND_SLASH = False
