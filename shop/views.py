@@ -501,6 +501,7 @@ class CategoryProductsView(generics.ListAPIView):
             print(f"ERROR: {e}")
             return Product.objects.none()
 
+
 class ProductImageUploadView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -508,8 +509,7 @@ class ProductImageUploadView(APIView):
 
         if "image" not in request.FILES:
             return Response(
-                {"error": "No image provided"},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "No image provided"}, status=status.HTTP_400_BAD_REQUEST
             )
 
         file = request.FILES["image"]
@@ -517,35 +517,31 @@ class ProductImageUploadView(APIView):
         if file.size > 5 * 1024 * 1024:
             return Response(
                 {"error": "Image too large (max 5MB)"},
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         product_id = request.data.get("product_id")
 
         if not product_id:
             return Response(
-                {"error": "product_id is required"},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "product_id is required"}, status=status.HTTP_400_BAD_REQUEST
             )
 
         product = get_object_or_404(Product, id=product_id)
 
-        result = cloudinary.uploader.upload(
-            file,
-            folder="products"
-        )
+        result = cloudinary.uploader.upload(file, folder="products")
 
         image = ProductImage.objects.create(
             product=product,
             image_url=result["secure_url"],
-            cloudinary_public_id=result["public_id"]
+            cloudinary_public_id=result["public_id"],
         )
 
         return Response(
             {
                 "id": image.id,
                 "url": image.image_url,
-                "public_id": image.cloudinary_public_id
+                "public_id": image.cloudinary_public_id,
             },
-            status=status.HTTP_201_CREATED
+            status=status.HTTP_201_CREATED,
         )
