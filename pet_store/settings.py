@@ -14,39 +14,31 @@ DEBUG = os.getenv("DEBUG", "False") == "True"
 ALLOWED_HOSTS = []
 
 if os.getenv("ALLOWED_HOSTS"):
-    ALLOWED_HOSTS.extend(os.getenv("ALLOWED_HOSTS").split(","))
+    ALLOWED_HOSTS.extend(
+        [h.strip() for h in os.getenv("ALLOWED_HOSTS").split(",") if h.strip()]
+    )
 
 ALLOWED_HOSTS.extend(
     [
-        "catdog-backend-env.eba-pvybnu33.eu-central-1.elasticbeanstalk.com",
+        "zoony.eu-central-1.elasticbeanstalk.com",
         "localhost",
         "127.0.0.1",
         ".elasticbeanstalk.com",
-        ".eu-central-1.elasticbeanstalk.com",
-        "18.199.35.9",
     ]
 )
-
-try:
-    import requests
-
-    EC2_PRIVATE_IP = requests.get(
-        "http://169.254.169.254/latest/meta-data/local-ipv4", timeout=0.1
-    ).text
-    if EC2_PRIVATE_IP not in ALLOWED_HOSTS:
-        ALLOWED_HOSTS.append(EC2_PRIVATE_IP)
-except:
-    pass
 
 if DEBUG:
     ALLOWED_HOSTS.extend(
         [
             "0.0.0.0",
-            "192.168.1.0/24",
-            "10.0.0.0/8",
             "testserver",
         ]
     )
+
+CSRF_TRUSTED_ORIGINS = [
+    "http://zoony.eu-central-1.elasticbeanstalk.com",
+    "https://zoony.eu-central-1.elasticbeanstalk.com",
+]
 
 INSTALLED_APPS = [
     "shop.admin_config.EcommerceAdminConfig",
@@ -113,6 +105,9 @@ DATABASES = {
         "PASSWORD": os.getenv("DB_PASSWORD"),
         "HOST": os.getenv("DB_HOST"),
         "PORT": os.getenv("DB_PORT", "5432"),
+        "OPTIONS": {
+            "sslmode": os.getenv("DB_SSL_MODE", "prefer"),
+        },
     }
 }
 
