@@ -1,21 +1,25 @@
+from decimal import Decimal
+
 from django.core.management.base import BaseCommand
+from django.db.models import Avg
+from django.utils.text import slugify
+
 from shop.models import (
-    Category,
     AnimalType,
     Brand,
+    Category,
+    Customer,
     Product,
     ProductAttribute,
     ProductAttributeValue,
-    ProductVariant,
     ProductImage,
     ProductReview,
+    ProductVariant,
 )
-from decimal import Decimal
-from django.utils.text import slugify
 
 
 class Command(BaseCommand):
-    help = "Load initial data including categories, brands, products, and variants"
+    help = "Load initial data including categories, brands, products, variants, and reviews"
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -31,20 +35,24 @@ class Command(BaseCommand):
 
         self.stdout.write("🚀 Starting to load initial data...")
 
-        # 1. Create animal types with icon (not image_url)
-        dog_type, created = AnimalType.objects.get_or_create(
-            name="Dogs", slug="dogs", defaults={"icon": "🐕", "is_active": True}
+        # 1. Create animal types
+        dog_type, dog_created = AnimalType.objects.get_or_create(
+            name="Dogs",
+            slug="dogs",
+            defaults={"icon": "🐕", "is_active": True},
         )
-        cat_type, created = AnimalType.objects.get_or_create(
-            name="Cats", slug="cats", defaults={"icon": "🐈", "is_active": True}
+        cat_type, cat_created = AnimalType.objects.get_or_create(
+            name="Cats",
+            slug="cats",
+            defaults={"icon": "🐈", "is_active": True},
         )
 
-        if created:
+        if dog_created or cat_created:
             self.stdout.write("✅ Animal types created")
         else:
             self.stdout.write("✅ Animal types already exist")
 
-        # 2. Create categories with image_url
+        # 2. Create categories
         dog_categories = [
             {
                 "name": "Food",
@@ -369,7 +377,7 @@ class Command(BaseCommand):
         self.stdout.write(f"✅ Created {dog_count} dog categories")
         self.stdout.write(f"✅ Created {cat_count} cat categories")
 
-        # 3. Create brands with logo URLs
+        # 3. Create brands
         brands = [
             {
                 "name": "Acme Pet Supplies",
@@ -503,14 +511,18 @@ class Command(BaseCommand):
         for attr_data in attributes:
             attribute, created = ProductAttribute.objects.get_or_create(
                 slug=attr_data["slug"],
-                defaults={"name": attr_data["name"], "filterable": True},
+                defaults={
+                    "name": attr_data["name"],
+                    "filterable": True,
+                },
             )
             attribute_objects[attribute.slug] = attribute
 
             for value in attr_data["values"]:
-                value_slug = slugify(value)
                 ProductAttributeValue.objects.get_or_create(
-                    attribute=attribute, slug=value_slug, defaults={"value": value}
+                    attribute=attribute,
+                    slug=slugify(value),
+                    defaults={"value": value},
                 )
 
             if created:
@@ -521,14 +533,17 @@ class Command(BaseCommand):
             dog_type, cat_type, brand_objects, attribute_objects
         )
 
-        # 6. Create some reviews for products
-        self.create_sample_reviews()
+        # 6. Create test users for reviews
+        review_users = self.create_test_users()
 
-        # Print testing info
+        # 7. Create sample reviews and sync product stats
+        self.create_sample_reviews(review_users)
+
+        # 8. Print summaries for verification
+        self.print_review_summary()
         self.print_testing_info()
 
     def create_categories(self, animal_type, categories_data, animal_name):
-        """Universal method for creating categories with image_url"""
         categories_created = 0
 
         for cat_data in categories_data:
@@ -548,7 +563,6 @@ class Command(BaseCommand):
                     f"   ✅ Created {animal_name} category: {cat_data['name']}"
                 )
 
-            # Create subcategories
             for child_data in cat_data.get("children", []):
                 child, created = Category.objects.get_or_create(
                     parent=parent,
@@ -568,37 +582,86 @@ class Command(BaseCommand):
 
         return categories_created
 
-    def create_sample_products(self, dog_type, cat_type, brands, attributes):
-        """Create sample products for dogs and cats with images and variants"""
+    def create_test_users(self):
+        users_data = [
+            {"email": "anna@example.com", "username": "anna"},
+            {"email": "ivan@example.com", "username": "ivan"},
+            {"email": "max@example.com", "username": "max"},
+        ]
 
-        # Get categories
+        users = []
+
+        for data in users_data:
+            user, created = Customer.objects.get_or_create(
+                email=data["email"],
+                defaults={
+                    "username": data["username"],
+                    "email_verified": True,
+                    "is_active": True,
+                },
+            )
+
+            if created:
+                user.set_password("test12345")
+                user.save()
+                self.stdout.write(f"✅ Created test user: {user.email}")
+
+            users.append(user)
+
+        return users
+
+    def sync_product_review_stats(self, product):
+        active_reviews = ProductReview.objects.filter(product=product, is_active=True)
+        review_count = active_reviews.count()
+        avg_rating = active_reviews.aggregate(avg=Avg("rating"))["avg"] or 0
+
+        product.review_count = review_count
+        product.rating = round(avg_rating, 2)
+        product.save(update_fields=["review_count", "rating"])
+
+    def create_sample_products(self, dog_type, cat_type, brands, attributes):
         dog_dry_food = Category.objects.get(
-            animal_type=dog_type, slug="dry-food", parent__slug="food"
+            animal_type=dog_type,
+            slug="dry-food",
+            parent__slug="food",
         )
         dog_treats = Category.objects.get(
-            animal_type=dog_type, slug="treats", parent__slug="food"
+            animal_type=dog_type,
+            slug="treats",
+            parent__slug="food",
         )
         dog_toys = Category.objects.get(
-            animal_type=dog_type, slug="toys", parent__slug="sets-gifts"
+            animal_type=dog_type,
+            slug="toys",
+            parent__slug="sets-gifts",
         )
         dog_beds = Category.objects.get(
-            animal_type=dog_type, slug="beds", parent__slug="home-comfort"
+            animal_type=dog_type,
+            slug="beds",
+            parent__slug="home-comfort",
         )
 
         cat_dry_food = Category.objects.get(
-            animal_type=cat_type, slug="dry-food", parent__slug="food"
+            animal_type=cat_type,
+            slug="dry-food",
+            parent__slug="food",
         )
         cat_wet_food = Category.objects.get(
-            animal_type=cat_type, slug="wet-food", parent__slug="food"
+            animal_type=cat_type,
+            slug="wet-food",
+            parent__slug="food",
         )
         cat_toys = Category.objects.get(
-            animal_type=cat_type, slug="toys", parent__slug="sets-gifts"
+            animal_type=cat_type,
+            slug="toys",
+            parent__slug="sets-gifts",
         )
         cat_litter = Category.objects.get(
-            animal_type=cat_type, slug="litter-trays", parent__slug="care-hygiene"
+            animal_type=cat_type,
+            slug="litter-trays",
+            parent__slug="care-hygiene",
         )
 
-        # Sample dog products - ВСІ АТРИБУТИ ПРАВИЛЬНІ
         dog_products = [
             {
                 "name": "Premium Adult Dog Food",
@@ -609,8 +672,6 @@ class Command(BaseCommand):
                 "brand": brands["royal-canin"],
                 "price": 45.99,
                 "is_featured": True,
-                "rating": 4.8,
-                "review_count": 124,
                 "images": [
                     "https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=600&h=600&fit=crop",
                     "https://images.unsplash.com/photo-1559056199-641a0ac8b55e?w=600&h=600&fit=crop",
@@ -655,8 +716,6 @@ class Command(BaseCommand):
                 "brand": brands["purina"],
                 "price": 12.99,
                 "is_featured": False,
-                "rating": 4.5,
-                "review_count": 89,
                 "images": [
                     "https://images.unsplash.com/photo-1541364983171-a8ba01e95cfc?w=600&h=600&fit=crop"
                 ],
@@ -694,8 +753,6 @@ class Command(BaseCommand):
                 "brand": brands["kong"],
                 "price": 15.99,
                 "is_featured": True,
-                "rating": 4.7,
-                "review_count": 156,
                 "images": [
                     "https://images.unsplash.com/photo-1548192746-dd526f154ed9?w=600&h=600&fit=crop"
                 ],
@@ -733,8 +790,6 @@ class Command(BaseCommand):
                 "brand": brands["petlux"],
                 "price": 89.99,
                 "is_featured": False,
-                "rating": 4.9,
-                "review_count": 203,
                 "images": [
                     "https://images.unsplash.com/photo-1561037404-61cd46aa615b?w=600&h=600&fit=crop"
                 ],
@@ -761,14 +816,10 @@ class Command(BaseCommand):
                         "color": "Black",
                     },
                 ],
-                "attributes": {
-                    "Material": "Fabric",
-                    "Color": "Multicolor",
-                },  # Змінено з "Various" на "Multicolor"
+                "attributes": {"Material": "Fabric", "Color": "Multicolor"},
             },
         ]
 
-        # Sample cat products
         cat_products = [
             {
                 "name": "Indoor Cat Formula",
@@ -779,8 +830,6 @@ class Command(BaseCommand):
                 "brand": brands["hills-science-diet"],
                 "price": 38.99,
                 "is_featured": True,
-                "rating": 4.6,
-                "review_count": 98,
                 "images": [
                     "https://images.unsplash.com/photo-1608848461950-0fe51dfc41cb?w=600&h=600&fit=crop"
                 ],
@@ -818,8 +867,6 @@ class Command(BaseCommand):
                 "brand": brands["acme-pet-supplies"],
                 "price": 24.99,
                 "is_featured": False,
-                "rating": 4.3,
-                "review_count": 67,
                 "images": [
                     "https://images.unsplash.com/photo-1576675466969-38eeae4b41f6?w=600&h=600&fit=crop"
                 ],
@@ -854,8 +901,6 @@ class Command(BaseCommand):
                 "brand": brands["petsafe"],
                 "price": 11.99,
                 "is_featured": True,
-                "rating": 4.8,
-                "review_count": 142,
                 "images": [
                     "https://images.unsplash.com/photo-1548192746-dd526f154ed9?w=600&h=600&fit=crop"
                 ],
@@ -866,8 +911,18 @@ class Command(BaseCommand):
                         "price": 11.99,
                         "stock": 70,
                     },
-                    {"sku": "WAND-MOUSE", "color": "Gray", "price": 12.99, "stock": 50},
-                    {"sku": "WAND-BELL", "color": "Red", "price": 10.99, "stock": 60},
+                    {
+                        "sku": "WAND-MOUSE",
+                        "color": "Gray",
+                        "price": 12.99,
+                        "stock": 50,
+                    },
+                    {
+                        "sku": "WAND-BELL",
+                        "color": "Red",
+                        "price": 10.99,
+                        "stock": 60,
+                    },
                 ],
                 "attributes": {"Material": "Fabric", "Color": "Multicolor"},
             },
@@ -880,8 +935,6 @@ class Command(BaseCommand):
                 "brand": brands["vetcare"],
                 "price": 18.99,
                 "is_featured": False,
-                "rating": 4.4,
-                "review_count": 78,
                 "images": [
                     "https://images.unsplash.com/photo-1591946614720-90a587da4a36?w=600&h=600&fit=crop"
                 ],
@@ -912,18 +965,13 @@ class Command(BaseCommand):
             },
         ]
 
-        # Create dog products
         for product_data in dog_products:
-            self.create_product_with_variants(product_data, "dog", attributes)
+            self.create_product_with_variants(product_data, "dog")
 
-        # Create cat products
         for product_data in cat_products:
-            self.create_product_with_variants(product_data, "cat", attributes)
+            self.create_product_with_variants(product_data, "cat")
 
-    def create_product_with_variants(self, product_data, animal_type, attributes):
-        """Create a product with its variants and images"""
-
-        # Get or create product
+    def create_product_with_variants(self, product_data, animal_type):
         product, created = Product.objects.get_or_create(
             slug=product_data["slug"],
             category=product_data["category"],
@@ -932,8 +980,8 @@ class Command(BaseCommand):
                 "description": product_data["description"],
                 "short_description": product_data["short_description"],
                 "brand": product_data["brand"],
-                "rating": product_data.get("rating", 0.0),
-                "review_count": product_data.get("review_count", 0),
+                "rating": 0.0,
+                "review_count": 0,
                 "is_featured": product_data.get("is_featured", False),
                 "is_active": True,
                 "composition": "High-quality ingredients for optimal nutrition",
@@ -945,7 +993,6 @@ class Command(BaseCommand):
         if created:
             self.stdout.write(f"✅ Created {animal_type} product: {product.name}")
 
-            # Create product images
             for i, image_url in enumerate(product_data.get("images", [])):
                 is_main = i == 0
                 ProductImage.objects.create(
@@ -955,12 +1002,14 @@ class Command(BaseCommand):
                     is_main=is_main,
                     display_order=i,
                 )
+
                 if is_main:
                     product.main_image = image_url
-                    product.save()
+                    product.save(update_fields=["main_image"])
 
-            # Create variants (без полів has_discount та discount_percentage)
             for variant_data in product_data["variants"]:
+                weight = variant_data.get("weight")
+
                 variant, v_created = ProductVariant.objects.get_or_create(
                     sku=variant_data["sku"],
                     defaults={
@@ -968,88 +1017,107 @@ class Command(BaseCommand):
                         "price": Decimal(str(variant_data["price"])),
                         "stock": variant_data["stock"],
                         "is_active": True,
-                        "weight": variant_data.get("weight"),
+                        "weight": Decimal(str(weight)) if weight is not None else None,
                     },
                 )
 
                 if v_created:
-                    # Add attributes to variant
                     if "size" in variant_data:
                         size_value = ProductAttributeValue.objects.get(
-                            attribute__slug="size", value=variant_data["size"]
+                            attribute__slug="size",
+                            value=variant_data["size"],
                         )
                         variant.attributes.add(size_value)
 
                     if "color" in variant_data:
                         color_value = ProductAttributeValue.objects.get(
-                            attribute__slug="color", value=variant_data["color"]
+                            attribute__slug="color",
+                            value=variant_data["color"],
                         )
                         variant.attributes.add(color_value)
 
-                    # Add product-level attributes
                     for attr_name, attr_value in product_data.get(
                         "attributes", {}
                     ).items():
                         attr = ProductAttribute.objects.get(name=attr_name)
                         value_obj = ProductAttributeValue.objects.get(
-                            attribute=attr, value=attr_value
+                            attribute=attr,
+                            value=attr_value,
                         )
                         variant.attributes.add(value_obj)
 
                     self.stdout.write(f"   ✅ Created variant: {variant.sku}")
 
-    def create_sample_reviews(self):
-        """Create sample reviews for products"""
-        products = Product.objects.all()[:3]
+    def create_sample_reviews(self, users=None):
+        ProductReview.objects.all().delete()
 
         sample_reviews = [
             {
                 "rating": 5,
                 "title": "Excellent product!",
-                "comment": "My dog loves this food. His coat looks shinier and he has more energy.",
+                "comment": "Very good quality, my pet really likes it.",
                 "is_verified": True,
             },
             {
                 "rating": 4,
                 "title": "Good quality",
-                "comment": "Works as expected. My cat enjoys playing with it.",
+                "comment": "Overall I'm satisfied, would buy again.",
                 "is_verified": True,
             },
             {
                 "rating": 3,
                 "title": "Average",
-                "comment": "It's okay for the price, but there are better options.",
+                "comment": "It's okay, but I expected a bit more.",
                 "is_verified": False,
             },
         ]
+
+        products = Product.objects.filter(is_active=True)
+        users = users or []
+        total_reviews_created = 0
 
         for product in products:
             for i, review_data in enumerate(sample_reviews):
                 ProductReview.objects.create(
                     product=product,
+                    user=users[i % len(users)] if users else None,
                     rating=review_data["rating"],
                     title=review_data["title"],
                     comment=review_data["comment"],
                     is_verified=review_data["is_verified"],
                     is_active=True,
                 )
+                total_reviews_created += 1
 
-        self.stdout.write(
-            f"✅ Created {len(products) * len(sample_reviews)} sample reviews"
-        )
+            self.sync_product_review_stats(product)
+
+        self.stdout.write(f"✅ Created {total_reviews_created} sample reviews")
+
+    def print_review_summary(self):
+        self.stdout.write("\n📝 Review summary:")
+        products = Product.objects.filter(is_active=True)[:5]
+
+        for product in products:
+            active_reviews = ProductReview.objects.filter(
+                product=product,
+                is_active=True,
+            ).count()
+
+            self.stdout.write(
+                f"   {product.name} | rating={product.rating} | "
+                f"review_count={product.review_count} | actual_reviews={active_reviews}"
+            )
 
     def print_testing_info(self):
-        """Print API testing information for the new structure"""
         self.stdout.write("\n" + "=" * 60)
         self.stdout.write("🎯 API TESTING INFORMATION FOR FRONTEND DEVELOPERS")
         self.stdout.write("=" * 60)
 
-        # Get sample product for testing
         sample_product = Product.objects.filter(is_active=True).first()
         product_id = sample_product.id if sample_product else "product-uuid-here"
 
-        # New API structure examples
         test_urls = [
+            "GET /api/dashboard",
             "GET /api/dogs/",
             "GET /api/cats/",
             "GET /api/dogs/food/",
@@ -1057,44 +1125,65 @@ class Command(BaseCommand):
             "GET /api/cats/food/wet-food/",
             "GET /api/dogs/food/products/",
             "GET /api/cats/home-comfort/products/",
-            "GET /api/products/",
-            f"GET /api/products/{product_id}/",
-            f"GET /api/products/{product_id}/variants/",
-            f"GET /api/products/{product_id}/related/",
-            "GET /api/products/featured/",
+            "GET /api/products",
+            f"GET /api/products/{product_id}",
+            f"GET /api/products/{product_id}/related",
+            "GET /api/products/featured",
             "GET /api/products/search/?q=dog",
-            "GET /api/brands/",
-            "GET /api/brands/royal-canin/",
+            "GET /api/brands",
+            "GET /api/brands/royal-canin",
         ]
 
-        self.stdout.write("\n📋 New API endpoints for testing:")
+        self.stdout.write("\n📋 API endpoints for testing:")
         for url in test_urls:
             self.stdout.write(f"   {url}")
 
-        # Statistics
         self.stdout.write("\n📊 Statistics:")
         total_categories = Category.objects.count()
         total_animal_types = AnimalType.objects.count()
         total_brands = Brand.objects.count()
         total_products = Product.objects.count()
         total_variants = ProductVariant.objects.count()
+        total_reviews = ProductReview.objects.count()
+        total_users = Customer.objects.count()
 
         self.stdout.write(f"   Total animal types: {total_animal_types}")
         self.stdout.write(f"   Total categories: {total_categories}")
         self.stdout.write(f"   Total brands: {total_brands}")
         self.stdout.write(f"   Total products: {total_products}")
         self.stdout.write(f"   Total variants: {total_variants}")
+        self.stdout.write(f"   Total reviews: {total_reviews}")
+        self.stdout.write(f"   Total users: {total_users}")
 
         self.stdout.write("\n🔗 Sample product for testing:")
         if sample_product:
             self.stdout.write(f"   Product ID: {sample_product.id}")
             self.stdout.write(f"   Name: {sample_product.name}")
-            self.stdout.write(f"   URL: /api/products/{sample_product.id}/")
+            self.stdout.write(f"   URL: /api/products/{sample_product.id}")
+
+        self.stdout.write("\n💡 Product detail review structure now looks like:")
+        self.stdout.write('   "reviews": {')
+        self.stdout.write('       "rating": 4.0,')
+        self.stdout.write('       "review_count": 3,')
+        self.stdout.write('       "reviews": [')
+        self.stdout.write("           {")
+        self.stdout.write('               "id": "...",')
+        self.stdout.write('               "username": "anna",')
+        self.stdout.write('               "created_at": "...",')
+        self.stdout.write('               "rating": 5,')
+        self.stdout.write('               "image_urls": [],')
+        self.stdout.write('               "updated_at": "...",')
+        self.stdout.write('               "comment": "...",')
+        self.stdout.write('               "positive_comment": null,')
+        self.stdout.write('               "negative_comment": null')
+        self.stdout.write("           }")
+        self.stdout.write("       ]")
+        self.stdout.write("   }")
 
         self.stdout.write("\n💡 Quick test examples:")
-        self.stdout.write("   curl http://localhost:8000/api/dogs/")
-        self.stdout.write("   curl http://localhost:8000/api/products/")
-        self.stdout.write(f"   curl http://localhost:8000/api/products/{product_id}/")
+        self.stdout.write("   curl http://localhost:8000/api/dashboard")
+        self.stdout.write("   curl http://localhost:8000/api/products")
+        self.stdout.write(f"   curl http://localhost:8000/api/products/{product_id}")
 
         self.stdout.write("\n" + "=" * 60)
         self.stdout.write(
