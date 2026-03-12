@@ -397,6 +397,49 @@ class ProductVariantSerializer(serializers.ModelSerializer):
         return ProductImageSerializer(images, many=True).data
 
 
+class ProductReviewItemSerializer(serializers.ModelSerializer):
+    """Serializer for product review item in product detail response"""
+
+    username = serializers.SerializerMethodField()
+    image_urls = serializers.SerializerMethodField()
+    positive_comment = serializers.SerializerMethodField()
+    negative_comment = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ProductReview
+        fields = [
+            "id",
+            "username",
+            "created_at",
+            "rating",
+            "image_urls",
+            "updated_at",
+            "comment",
+            "positive_comment",
+            "negative_comment",
+        ]
+
+    def get_username(self, obj):
+        if obj.user:
+            full_name = obj.user.get_full_name().strip()
+            if full_name:
+                return full_name
+            if obj.user.username:
+                return obj.user.username
+            if obj.user.email:
+                return obj.user.email.split("@")[0]
+        return "Anonymous"
+
+    def get_image_urls(self, obj):
+        return []
+
+    def get_positive_comment(self, obj):
+        return None
+
+    def get_negative_comment(self, obj):
+        return None
+
+
 class ProductReviewSerializer(serializers.ModelSerializer):
     """Serializer for product reviews"""
 
@@ -430,7 +473,7 @@ class BadgeSerializer(serializers.ModelSerializer):
 class ProductCardSerializer(serializers.ModelSerializer):
     """Serializer for product short version (product card in listings)"""
 
-    brand = serializers.CharField(source="brand.name")
+    brand = serializers.SerializerMethodField()
     image_url = serializers.SerializerMethodField()
     price = serializers.SerializerMethodField()
     old_price = serializers.SerializerMethodField()
@@ -460,6 +503,9 @@ class ProductCardSerializer(serializers.ModelSerializer):
             "animal_type_slug",
             "is_featured",
         ]
+
+    def get_brand(self, obj):
+        return obj.brand.name if obj.brand else None
 
     def get_image_url(self, obj):
         main_image = obj.images.filter(is_main=True).first()
@@ -615,18 +661,31 @@ class ProductCardSerializer(serializers.ModelSerializer):
 
 
 class ProductDetailSerializer(ProductCardSerializer):
-    """Full product details serializer - extends card serializer"""
+    """Full product details serializer"""
 
     variants = ProductVariantSerializer(many=True, read_only=True)
     images = ProductImageSerializer(many=True, read_only=True)
-    reviews = ProductReviewSerializer(many=True, read_only=True)
+    reviews = serializers.SerializerMethodField()
     available_attributes = serializers.SerializerMethodField()
     category = serializers.SerializerMethodField()
     brand = BrandSerializer(read_only=True)
 
     class Meta:
         model = Product
-        fields = ProductCardSerializer.Meta.fields + [
+        fields = [
+            "id",
+            "name",
+            "brand",
+            "image_url",
+            "price",
+            "old_price",
+            "discount_percentage",
+            "in_stock",
+            "badges",
+            "variants_display",
+            "category_slug",
+            "animal_type_slug",
+            "is_featured",
             "description",
             "short_description",
             "category",
@@ -656,18 +715,32 @@ class ProductDetailSerializer(ProductCardSerializer):
             },
         }
 
+    def get_reviews(self, obj):
+        return {
+            "rating": float(obj.rating) if obj.rating is not None else 0,
+            "review_count": obj.review_count or 0,
+            "reviews": ProductReviewItemSerializer(obj.reviews.all(), many=True).data,
+        }
+
     def get_available_attributes(self, obj):
         """Get available attributes with their values for product filtering"""
         attributes = {}
+
         for variant in obj.variants.filter(is_active=True):
             for attr_value in variant.attributes.all():
                 attr_name = attr_value.attribute.name
+
                 if attr_name not in attributes:
                     attributes[attr_name] = {
                         "attribute_id": attr_value.attribute.id,
                         "values": [],
                     }
-                if attr_value.value not in attributes[attr_name]["values"]:
+
+                existing_values = [
+                    value["value"] for value in attributes[attr_name]["values"]
+                ]
+
+                if attr_value.value not in existing_values:
                     attributes[attr_name]["values"].append(
                         {
                             "id": attr_value.id,
@@ -675,6 +748,7 @@ class ProductDetailSerializer(ProductCardSerializer):
                             "slug": attr_value.slug,
                         }
                     )
+
         return attributes
 
 

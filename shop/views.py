@@ -301,7 +301,8 @@ class ProductDetailView(generics.RetrieveAPIView):
             .select_related("brand", "category", "category__animal_type")
             .prefetch_related(
                 Prefetch(
-                    "images", queryset=ProductImage.objects.order_by("display_order")
+                    "images",
+                    queryset=ProductImage.objects.order_by("display_order"),
                 ),
                 Prefetch(
                     "variants",
@@ -310,7 +311,10 @@ class ProductDetailView(generics.RetrieveAPIView):
                     ).prefetch_related("attributes", "images"),
                 ),
                 Prefetch(
-                    "reviews", queryset=ProductReview.objects.filter(is_active=True)
+                    "reviews",
+                    queryset=ProductReview.objects.filter(is_active=True)
+                    .select_related("user")
+                    .order_by("-created_at"),
                 ),
             )
         )
@@ -346,7 +350,10 @@ class DashboardView(APIView):
 
         discounted_products = (
             Product.objects.filter(
-                variants__has_discount=True, variants__is_active=True, is_active=True
+                variants__has_discount=True,
+                variants__is_active=True,
+                variants__stock__gt=0,
+                is_active=True,
             )
             .distinct()
             .select_related("brand", "category", "category__animal_type")
@@ -385,6 +392,7 @@ class BrandDetailView(generics.RetrieveAPIView):
     permission_classes = [permissions.AllowAny]
     serializer_class = BrandSerializer
     lookup_field = "slug"
+    lookup_url_kwarg = "brand_slug"
 
     def get_queryset(self):
         return Brand.objects.filter(is_active=True)
