@@ -176,7 +176,7 @@ class Product(models.Model):
     category = models.ForeignKey(
         Category, on_delete=models.CASCADE, related_name="products"
     )
-    is_featured = models.BooleanField(default=False)
+    show_on_dashboard = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     badges = models.ManyToManyField(Badge, blank=True, related_name="products")
     rating = models.DecimalField(max_digits=3, decimal_places=2, default=0.0)
@@ -299,7 +299,6 @@ class ProductVariant(models.Model):
     is_active = models.BooleanField(default=True)
     has_discount = models.BooleanField(default=False)
     weight = models.DecimalField(max_digits=8, decimal_places=3, null=True, blank=True)
-    dimensions = models.CharField(max_length=100, blank=True)
     attributes = models.ManyToManyField(ProductAttributeValue, related_name="variants")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

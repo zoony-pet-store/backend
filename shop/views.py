@@ -218,7 +218,7 @@ class ProductListView(generics.ListAPIView):
         "category": ["exact"],
         "brand": ["exact"],
         "rating": ["gte", "lte"],
-        "is_featured": ["exact"],
+        "show_on_dashboard": ["exact"],
         "category__animal_type__slug": ["exact"],
     }
 
@@ -406,7 +406,7 @@ class FeaturedProductsView(generics.ListAPIView):
 
     def get_queryset(self):
         return (
-            Product.objects.filter(is_active=True, is_featured=True)
+            Product.objects.filter(is_active=True, show_on_dashboard=True)
             .select_related("brand", "category")
             .prefetch_related("images", "variants")
             .order_by("-rating", "-review_count")[:12]

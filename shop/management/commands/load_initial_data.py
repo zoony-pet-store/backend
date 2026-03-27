@@ -671,7 +671,7 @@ class Command(BaseCommand):
                 "category": dog_dry_food,
                 "brand": brands["royal-canin"],
                 "price": 45.99,
-                "is_featured": True,
+                "show_on_dashboard": True,
                 "images": [
                     "https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=600&h=600&fit=crop",
                     "https://images.unsplash.com/photo-1559056199-641a0ac8b55e?w=600&h=600&fit=crop",
@@ -715,7 +715,7 @@ class Command(BaseCommand):
                 "category": dog_treats,
                 "brand": brands["purina"],
                 "price": 12.99,
-                "is_featured": False,
+                "show_on_dashboard": False,
                 "images": [
                     "https://images.unsplash.com/photo-1541364983171-a8ba01e95cfc?w=600&h=600&fit=crop"
                 ],
@@ -752,7 +752,7 @@ class Command(BaseCommand):
                 "category": dog_toys,
                 "brand": brands["kong"],
                 "price": 15.99,
-                "is_featured": True,
+                "show_on_dashboard": True,
                 "images": [
                     "https://images.unsplash.com/photo-1548192746-dd526f154ed9?w=600&h=600&fit=crop"
                 ],
@@ -789,7 +789,7 @@ class Command(BaseCommand):
                 "category": dog_beds,
                 "brand": brands["petlux"],
                 "price": 89.99,
-                "is_featured": False,
+                "show_on_dashboard": False,
                 "images": [
                     "https://images.unsplash.com/photo-1561037404-61cd46aa615b?w=600&h=600&fit=crop"
                 ],
@@ -829,7 +829,7 @@ class Command(BaseCommand):
                 "category": cat_dry_food,
                 "brand": brands["hills-science-diet"],
                 "price": 38.99,
-                "is_featured": True,
+                "show_on_dashboard": True,
                 "images": [
                     "https://images.unsplash.com/photo-1608848461950-0fe51dfc41cb?w=600&h=600&fit=crop"
                 ],
@@ -866,7 +866,7 @@ class Command(BaseCommand):
                 "category": cat_wet_food,
                 "brand": brands["acme-pet-supplies"],
                 "price": 24.99,
-                "is_featured": False,
+                "show_on_dashboard": False,
                 "images": [
                     "https://images.unsplash.com/photo-1576675466969-38eeae4b41f6?w=600&h=600&fit=crop"
                 ],
@@ -900,7 +900,7 @@ class Command(BaseCommand):
                 "category": cat_toys,
                 "brand": brands["petsafe"],
                 "price": 11.99,
-                "is_featured": True,
+                "show_on_dashboard": True,
                 "images": [
                     "https://images.unsplash.com/photo-1548192746-dd526f154ed9?w=600&h=600&fit=crop"
                 ],
@@ -934,7 +934,7 @@ class Command(BaseCommand):
                 "category": cat_litter,
                 "brand": brands["vetcare"],
                 "price": 18.99,
-                "is_featured": False,
+                "show_on_dashboard": False,
                 "images": [
                     "https://images.unsplash.com/photo-1591946614720-90a587da4a36?w=600&h=600&fit=crop"
                 ],
@@ -982,7 +982,7 @@ class Command(BaseCommand):
                 "brand": product_data["brand"],
                 "rating": 0.0,
                 "review_count": 0,
-                "is_featured": product_data.get("is_featured", False),
+                "show_on_dashboard": product_data.get("show_on_dashboard", False),
                 "is_active": True,
                 "composition": "High-quality ingredients for optimal nutrition",
                 "feeding_guidelines": "Feed according to your pet's weight and activity level",

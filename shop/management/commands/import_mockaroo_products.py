@@ -151,7 +151,7 @@ class Command(BaseCommand):
             brand=brand,
             category=category,
             is_active=True,
-            is_featured=False,
+            show_on_dashboard=False,
             rating=0,
             review_count=0,
             main_image=main_image or "",
@@ -178,7 +178,6 @@ class Command(BaseCommand):
             is_active=True,
             has_discount=has_discount,
             weight=weight,
-            dimensions="",
         )
         variant_created = True
 

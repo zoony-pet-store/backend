@@ -383,7 +383,6 @@ class ProductVariantSerializer(serializers.ModelSerializer):
             "discount_percentage",
             "stock",
             "weight",
-            "dimensions",
             "attributes",
             "images",
             "is_active",
@@ -501,7 +500,7 @@ class ProductCardSerializer(serializers.ModelSerializer):
             "variants_display",
             "category_slug",
             "animal_type_slug",
-            "is_featured",
+            "show_on_dashboard",
         ]
 
     def get_brand(self, obj):
@@ -599,7 +598,7 @@ class ProductCardSerializer(serializers.ModelSerializer):
             )
 
         # Featured badge
-        if obj.is_featured and not any(b["name"] == "featured" for b in badges_list):
+        if obj.show_on_dashboard and not any(b["name"] == "featured" for b in badges_list):
             badges_list.append(
                 {
                     "name": "featured",
@@ -685,7 +684,7 @@ class ProductDetailSerializer(ProductCardSerializer):
             "variants_display",
             "category_slug",
             "animal_type_slug",
-            "is_featured",
+            "show_on_dashboard",
             "description",
             "short_description",
             "category",
