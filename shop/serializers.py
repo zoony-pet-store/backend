@@ -598,7 +598,9 @@ class ProductCardSerializer(serializers.ModelSerializer):
             )
 
         # Featured badge
-        if obj.show_on_dashboard and not any(b["name"] == "featured" for b in badges_list):
+        if obj.show_on_dashboard and not any(
+            b["name"] == "featured" for b in badges_list
+        ):
             badges_list.append(
                 {
                     "name": "featured",
