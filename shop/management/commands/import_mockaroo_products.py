@@ -151,7 +151,6 @@ class Command(BaseCommand):
             brand=brand,
             category=category,
             is_active=True,
-            show_on_dashboard=False,
             rating=0,
             review_count=0,
             main_image=main_image or "",

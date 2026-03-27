@@ -12,11 +12,6 @@ urlpatterns = [
     # ========== PRODUCTS ==========
     # Product collections
     path("products", views.ProductListView.as_view(), name="product-list"),
-    path(
-        "products/featured",
-        views.FeaturedProductsView.as_view(),
-        name="featured-products",
-    ),
     path("products/search", views.ProductSearchView.as_view(), name="product-search"),
     # Specific product operations
     path(

@@ -218,7 +218,6 @@ class ProductListView(generics.ListAPIView):
         "category": ["exact"],
         "brand": ["exact"],
         "rating": ["gte", "lte"],
-        "show_on_dashboard": ["exact"],
         "category__animal_type__slug": ["exact"],
     }
 
@@ -322,16 +321,18 @@ class ProductDetailView(generics.RetrieveAPIView):
 
 class DashboardView(APIView):
     """
-    1. New arrivals (20 newest products from last 30 days)
-    2. Best sellers (20 products with highest rating)
-    3. Discounted products (20 products with discounts)
+    Dashboard sections:
+    1. New arrivals
+    2. Best sellers
+    3. Discounted products
+    4. Products selected for dashboard
     """
 
     permission_classes = [permissions.AllowAny]
 
     def get(self, request):
-
         thirty_days_ago = timezone.now() - timedelta(days=30)
+
         new_arrivals = (
             Product.objects.filter(created_at__gte=thirty_days_ago, is_active=True)
             .select_related("brand", "category", "category__animal_type")
@@ -341,7 +342,9 @@ class DashboardView(APIView):
 
         best_sellers = (
             Product.objects.filter(
-                rating__gte=4.5, review_count__gte=10, is_active=True
+                rating__gte=4.5,
+                review_count__gte=10,
+                is_active=True,
             )
             .select_related("brand", "category", "category__animal_type")
             .prefetch_related("images", "variants")
@@ -396,21 +399,6 @@ class BrandDetailView(generics.RetrieveAPIView):
 
     def get_queryset(self):
         return Brand.objects.filter(is_active=True)
-
-
-class FeaturedProductsView(generics.ListAPIView):
-    """Get featured products (usually for homepage or promotions)"""
-
-    permission_classes = [permissions.AllowAny]
-    serializer_class = ProductCardSerializer
-
-    def get_queryset(self):
-        return (
-            Product.objects.filter(is_active=True, show_on_dashboard=True)
-            .select_related("brand", "category")
-            .prefetch_related("images", "variants")
-            .order_by("-rating", "-review_count")[:12]
-        )
 
 
 class RelatedProductsView(generics.ListAPIView):

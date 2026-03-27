@@ -176,7 +176,6 @@ class Product(models.Model):
     category = models.ForeignKey(
         Category, on_delete=models.CASCADE, related_name="products"
     )
-    show_on_dashboard = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     badges = models.ManyToManyField(Badge, blank=True, related_name="products")
     rating = models.DecimalField(max_digits=3, decimal_places=2, default=0.0)
