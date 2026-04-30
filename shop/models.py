@@ -1,41 +1,45 @@
 import uuid
 
 from django.contrib.auth.models import AbstractUser, BaseUserManager
+from django.core.exceptions import ValidationError
 from django.db import models
-from phonenumber_field.modelfields import PhoneNumberField
+from django.db.models import Max, Min, Q
 from django.utils.text import slugify
+from phonenumber_field.modelfields import PhoneNumberField
 
 
 class CustomerManager(BaseUserManager):
-    """Custom manager for Customer model"""
+    """Custom manager for Customer model."""
 
     def create_user(self, email, password=None, **extra_fields):
-        """Create and save a regular user"""
+        """Create and save a regular user."""
         if not email:
-            raise ValueError("User must have an email address")
+            raise ValueError("User must have an email address.")
 
         email = self.normalize_email(email)
         user = self.model(email=email, **extra_fields)
         user.set_password(password)
         user.save(using=self._db)
+
         return user
 
     def create_superuser(self, email, password=None, **extra_fields):
-        """Create and save a superuser"""
+        """Create and save a superuser."""
         extra_fields.setdefault("is_staff", True)
         extra_fields.setdefault("is_superuser", True)
         extra_fields.setdefault("is_active", True)
 
         if extra_fields.get("is_staff") is not True:
-            raise ValueError("Superuser must have is_staff=True")
+            raise ValueError("Superuser must have is_staff=True.")
+
         if extra_fields.get("is_superuser") is not True:
-            raise ValueError("Superuser must have is_superuser=True")
+            raise ValueError("Superuser must have is_superuser=True.")
 
         return self.create_user(email, password, **extra_fields)
 
 
 class Customer(AbstractUser):
-    """Custom user model for customers"""
+    """Custom user model for customers."""
 
     username = models.CharField(max_length=150, blank=True, null=True)
     email = models.EmailField(unique=True)
@@ -51,6 +55,7 @@ class Customer(AbstractUser):
     def save(self, *args, **kwargs):
         if not self.username:
             self.username = self.email
+
         super().save(*args, **kwargs)
 
     def __str__(self):
@@ -58,7 +63,7 @@ class Customer(AbstractUser):
 
 
 class AnimalType(models.Model):
-    """Animal type/category (e.g., dogs, cats)"""
+    """Animal type/category, e.g. dogs, cats."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=50)
@@ -69,23 +74,30 @@ class AnimalType(models.Model):
 
     class Meta:
         db_table = "animal_types"
+        ordering = ["name"]
 
     def __str__(self):
         return self.name
 
 
 class Category(models.Model):
-    """Product category with hierarchical structure"""
+    """Product category with hierarchical structure."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=255)
-    slug = models.SlugField()
+    slug = models.SlugField(blank=True)
     description = models.TextField(blank=True)
     parent = models.ForeignKey(
-        "self", on_delete=models.CASCADE, null=True, blank=True, related_name="children"
+        "self",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="children",
     )
     animal_type = models.ForeignKey(
-        AnimalType, on_delete=models.CASCADE, related_name="categories"
+        AnimalType,
+        on_delete=models.CASCADE,
+        related_name="categories",
     )
     image_url = models.URLField(max_length=500, blank=True)
     is_active = models.BooleanField(default=True)
@@ -97,13 +109,15 @@ class Category(models.Model):
     class Meta:
         db_table = "categories"
         ordering = ["sort_order", "name"]
-        unique_together = ["slug", "animal_type", "parent"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["slug", "animal_type", "parent"],
+                name="unique_category_slug_per_parent_and_animal_type",
+            )
+        ]
 
     def save(self, *args, **kwargs):
-        if self.parent:
-            self.level = self.parent.level + 1
-        else:
-            self.level = 0
+        self.level = self.parent.level + 1 if self.parent else 0
 
         if not self.slug:
             self.slug = self.generate_slug()
@@ -111,16 +125,31 @@ class Category(models.Model):
         super().save(*args, **kwargs)
 
     def generate_slug(self):
-        """Generate unique slug for category"""
         base_slug = slugify(self.name)
         slug = base_slug
         counter = 1
 
-        while Category.objects.filter(
-            slug=slug, animal_type=self.animal_type, parent=self.parent
-        ).exists():
+        queryset = Category.objects.filter(
+            slug=slug,
+            animal_type=self.animal_type,
+            parent=self.parent,
+        )
+
+        if self.pk:
+            queryset = queryset.exclude(pk=self.pk)
+
+        while queryset.exists():
             slug = f"{base_slug}-{counter}"
             counter += 1
+
+            queryset = Category.objects.filter(
+                slug=slug,
+                animal_type=self.animal_type,
+                parent=self.parent,
+            )
+
+            if self.pk:
+                queryset = queryset.exclude(pk=self.pk)
 
         return slug
 
@@ -129,199 +158,542 @@ class Category(models.Model):
 
 
 class Brand(models.Model):
-    """Product brands"""
+    """Product brand."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=255)
-    slug = models.SlugField(unique=True)
+    slug = models.SlugField(unique=True, blank=True)
     description = models.TextField(blank=True)
     logo_url = models.URLField(max_length=500, blank=True)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        ordering = ["name"]
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = self.generate_slug()
+
+        super().save(*args, **kwargs)
+
+    def generate_slug(self):
+        base_slug = slugify(self.name)
+        slug = base_slug
+        counter = 1
+
+        queryset = Brand.objects.filter(slug=slug)
+
+        if self.pk:
+            queryset = queryset.exclude(pk=self.pk)
+
+        while queryset.exists():
+            slug = f"{base_slug}-{counter}"
+            counter += 1
+
+            queryset = Brand.objects.filter(slug=slug)
+
+            if self.pk:
+                queryset = queryset.exclude(pk=self.pk)
+
+        return slug
+
     def __str__(self):
         return self.name
+
+
+class Badge(models.Model):
+    """Product or variant badge, e.g. New, Sale, Bestseller."""
+
+    name = models.CharField(max_length=50, unique=True)
+    slug = models.SlugField(max_length=50, unique=True, blank=True)
+    label = models.CharField(max_length=50)
+    color = models.CharField(max_length=7, default="#000000")
+    background_color = models.CharField(max_length=7, default="#FFFFFF")
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["label"]
 
     def save(self, *args, **kwargs):
         if not self.slug:
             self.slug = slugify(self.name)
+
         super().save(*args, **kwargs)
-
-
-class Badge(models.Model):
-    name = models.CharField(max_length=50, unique=True)
-    slug = models.SlugField(max_length=50, unique=True)
-    label = models.CharField(max_length=50)
-    color = models.CharField(max_length=7, default="#000000")  # HEX color
-    background_color = models.CharField(max_length=7, default="#FFFFFF")
-    is_active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return self.label
 
 
 class Product(models.Model):
-    """Main product model"""
+    """
+    Base product.
+
+    Important:
+    Product does not store stock.
+    Real stock and real price live on ProductVariant.
+    Product-level price for frontend should be calculated from default_variant.
+    """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=255)
-    slug = models.SlugField()
+    slug = models.SlugField(blank=True)
+
     description = models.TextField(blank=True)
     short_description = models.TextField(max_length=500, blank=True)
+
     brand = models.ForeignKey(
-        Brand, on_delete=models.SET_NULL, null=True, blank=True, related_name="products"
+        Brand,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="products",
     )
     category = models.ForeignKey(
-        Category, on_delete=models.CASCADE, related_name="products"
+        Category,
+        on_delete=models.CASCADE,
+        related_name="products",
     )
+
     is_active = models.BooleanField(default=True)
     badges = models.ManyToManyField(Badge, blank=True, related_name="products")
+
     rating = models.DecimalField(max_digits=3, decimal_places=2, default=0.0)
     review_count = models.IntegerField(default=0)
+
     meta_title = models.CharField(max_length=255, blank=True)
     meta_description = models.TextField(blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+
     composition = models.TextField(blank=True, verbose_name="Product composition")
     nutritional_analysis = models.TextField(blank=True, verbose_name="Typical analysis")
     feeding_guidelines = models.TextField(blank=True, verbose_name="Feeding guidelines")
     ingredients = models.TextField(blank=True, verbose_name="Ingredients")
+
     nutritional_value = models.JSONField(
-        default=dict, blank=True, verbose_name="Nutritional value (JSON)"
+        default=dict,
+        blank=True,
+        verbose_name="Nutritional value (JSON)",
     )
     feeding_table = models.JSONField(
-        default=dict, blank=True, verbose_name="Feeding table (JSON)"
+        default=dict,
+        blank=True,
+        verbose_name="Feeding table (JSON)",
     )
-    # Main image for backward compatibility
+
+    # Keep for backward compatibility / fallback image.
     main_image = models.URLField(max_length=500, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["-created_at"]
-        unique_together = ["slug", "category"]
-
-    def __str__(self):
-        return self.name
+        constraints = [
+            models.UniqueConstraint(
+                fields=["slug", "category"],
+                name="unique_product_slug_per_category",
+            )
+        ]
 
     def save(self, *args, **kwargs):
         if not self.slug:
             self.slug = self.generate_slug()
+
         super().save(*args, **kwargs)
 
     def generate_slug(self):
-        """Generate unique slug for product"""
         base_slug = slugify(self.name)
         slug = base_slug
         counter = 1
 
-        while Product.objects.filter(slug=slug, category=self.category).exists():
+        queryset = Product.objects.filter(slug=slug, category=self.category)
+
+        if self.pk:
+            queryset = queryset.exclude(pk=self.pk)
+
+        while queryset.exists():
             slug = f"{base_slug}-{counter}"
             counter += 1
+
+            queryset = Product.objects.filter(slug=slug, category=self.category)
+
+            if self.pk:
+                queryset = queryset.exclude(pk=self.pk)
 
         return slug
 
     @property
-    def min_price(self):
-        """Minimum price from active variants"""
-        from django.db.models import Min
+    def default_variant(self):
+        """
+        Variant that should be used as base display variant on catalog/product page.
 
-        variants = self.variants.filter(is_active=True)
-        if variants.exists():
-            return variants.aggregate(min_price=Min("price"))["min_price"]
+        Priority:
+        1. active variant with is_default=True
+        2. first active variant by display_order and price
+        """
+        return (
+            self.variants.filter(is_active=True)
+            .order_by("-is_default", "display_order", "price")
+            .first()
+        )
+
+    @property
+    def display_price(self):
+        variant = self.default_variant
+        return variant.price if variant else None
+
+    @property
+    def display_old_price(self):
+        variant = self.default_variant
+
+        if variant and variant.has_discount:
+            return variant.old_price
+
         return None
+
+    @property
+    def min_price(self):
+        return self.variants.filter(is_active=True).aggregate(min_price=Min("price"))[
+            "min_price"
+        ]
 
     @property
     def max_price(self):
-        """Maximum price from active variants"""
-        from django.db.models import Max
-
-        variants = self.variants.filter(is_active=True)
-        if variants.exists():
-            return variants.aggregate(max_price=Max("price"))["max_price"]
-        return None
+        return self.variants.filter(is_active=True).aggregate(max_price=Max("price"))[
+            "max_price"
+        ]
 
     @property
     def in_stock(self):
-        """Check if at least one variant is in stock"""
         return self.variants.filter(is_active=True, stock__gt=0).exists()
+
+    def __str__(self):
+        return self.name
 
 
 class ProductAttribute(models.Model):
-    """Product attributes (e.g., size, color, flavor)"""
+    """
+    Attribute type, e.g. Size, Color, Weight, Flavor.
+
+    categories is optional:
+    - empty means global attribute
+    - filled means this attribute is relevant only for selected categories
+    """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=100)
-    slug = models.SlugField(unique=True)
+    slug = models.SlugField(unique=True, blank=True)
     description = models.TextField(blank=True)
     filterable = models.BooleanField(default=True)
     display_order = models.IntegerField(default=0)
+
+    categories = models.ManyToManyField(
+        Category,
+        blank=True,
+        related_name="attributes",
+    )
+
+    class Meta:
+        ordering = ["display_order", "name"]
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = slugify(self.name)
+
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.name
 
 
 class ProductAttributeValue(models.Model):
-    """Values for product attributes"""
+    """Possible value for an attribute, e.g. Size: S, Color: Pink."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     attribute = models.ForeignKey(
-        ProductAttribute, on_delete=models.CASCADE, related_name="values"
+        ProductAttribute,
+        on_delete=models.CASCADE,
+        related_name="values",
     )
     value = models.CharField(max_length=255)
-    slug = models.SlugField()
+    slug = models.SlugField(blank=True)
     display_order = models.IntegerField(default=0)
 
     class Meta:
-        unique_together = ["attribute", "slug"]
+        ordering = ["attribute__display_order", "display_order", "value"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["attribute", "slug"],
+                name="unique_attribute_value_slug_per_attribute",
+            )
+        ]
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = self.generate_slug()
+
+        super().save(*args, **kwargs)
+
+    def generate_slug(self):
+        base_slug = slugify(self.value)
+        slug = base_slug
+        counter = 1
+
+        queryset = ProductAttributeValue.objects.filter(
+            attribute=self.attribute,
+            slug=slug,
+        )
+
+        if self.pk:
+            queryset = queryset.exclude(pk=self.pk)
+
+        while queryset.exists():
+            slug = f"{base_slug}-{counter}"
+            counter += 1
+
+            queryset = ProductAttributeValue.objects.filter(
+                attribute=self.attribute,
+                slug=slug,
+            )
+
+            if self.pk:
+                queryset = queryset.exclude(pk=self.pk)
+
+        return slug
 
     def __str__(self):
         return f"{self.attribute.name}: {self.value}"
 
 
 class ProductVariant(models.Model):
-    """Product variants (e.g., different sizes, colors)"""
+    """
+    Concrete SKU / physical item.
+
+    This is what user adds to cart.
+    Price, old_price and stock belong here, not on Product.
+    """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
     product = models.ForeignKey(
-        Product, on_delete=models.CASCADE, related_name="variants"
+        Product,
+        on_delete=models.CASCADE,
+        related_name="variants",
     )
-    sku = models.CharField(max_length=100, unique=True)
+
+    sku = models.CharField(max_length=100, unique=True, blank=True)
+
     price = models.DecimalField(max_digits=10, decimal_places=2)
     old_price = models.DecimalField(
-        max_digits=10, decimal_places=2, null=True, blank=True
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
     )
     cost_price = models.DecimalField(
-        max_digits=10, decimal_places=2, null=True, blank=True
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
     )
-    stock = models.IntegerField(default=0)
+
+    stock = models.PositiveIntegerField(default=0)
     is_active = models.BooleanField(default=True)
-    has_discount = models.BooleanField(default=False)
-    weight = models.DecimalField(max_digits=8, decimal_places=3, null=True, blank=True)
-    attributes = models.ManyToManyField(ProductAttributeValue, related_name="variants")
+
+    weight = models.DecimalField(
+        max_digits=8,
+        decimal_places=3,
+        null=True,
+        blank=True,
+    )
+
+    # Optional overrides for selected variant.
+    description = models.TextField(blank=True)
+    short_description = models.TextField(blank=True)
+    badges = models.ManyToManyField(Badge, blank=True, related_name="variants")
+
+    is_default = models.BooleanField(default=False)
+    display_order = models.PositiveIntegerField(default=0)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ["price"]
+        ordering = ["display_order", "price"]
+        indexes = [
+            models.Index(fields=["product", "is_active"]),
+            models.Index(fields=["product", "is_default"]),
+            models.Index(fields=["sku"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["product"],
+                condition=Q(is_default=True),
+                name="unique_default_variant_per_product",
+            )
+        ]
+
+    def clean(self):
+        if self.old_price is not None and self.price is not None:
+            if self.old_price <= self.price:
+                raise ValidationError(
+                    {"old_price": "Old price must be greater than current price."}
+                )
+
+    def save(self, *args, **kwargs):
+        if not self.sku:
+            self.sku = self.generate_sku()
+        else:
+            self.sku = self.sku.strip().upper()
+
+        if self.product_id and not self.is_default:
+            has_default_variant = (
+                ProductVariant.objects.filter(
+                    product_id=self.product_id,
+                    is_default=True,
+                )
+                .exclude(pk=self.pk)
+                .exists()
+            )
+
+            if not has_default_variant:
+                self.is_default = True
+
+        if self.product_id and self.is_default:
+            ProductVariant.objects.filter(
+                product_id=self.product_id,
+                is_default=True,
+            ).exclude(pk=self.pk).update(is_default=False)
+
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def generate_sku(self):
+        """
+        Hybrid SKU approach:
+        - if admin provides SKU manually, we keep it;
+        - if SKU is empty, backend generates stable SKU.
+
+        We intentionally do not depend on inline attributes here,
+        because variant attributes are usually saved after variant in Django admin.
+        """
+        product_part = slugify(self.product.slug or self.product.name or "product")
+        product_part = product_part.replace("-", "").upper()[:24]
+
+        return f"{product_part}-{self.id.hex[:8].upper()}"
+
+    @property
+    def has_discount(self):
+        return bool(self.old_price and self.old_price > self.price)
+
+    @property
+    def discount_percentage(self):
+        if self.has_discount:
+            return round((self.old_price - self.price) / self.old_price * 100)
+
+        return 0
+
+    @property
+    def in_stock(self):
+        return self.is_active and self.stock > 0
 
     def __str__(self):
         return f"{self.product.name} - {self.sku}"
 
-    @property
-    def discount_percentage(self):
-        """Calculate discount percentage"""
-        if self.has_discount:
-            return round((self.old_price - self.price) / self.old_price * 100)
-        return 0
+
+class ProductVariantAttribute(models.Model):
+    """
+    Attribute selected for concrete variant.
+
+    Example:
+    Variant: BED-S-PINK
+    Attribute: Size
+    Value: S
+
+    Constraint:
+    One variant can have only one value for the same attribute.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    variant = models.ForeignKey(
+        ProductVariant,
+        on_delete=models.CASCADE,
+        related_name="variant_attributes",
+    )
+    attribute = models.ForeignKey(
+        ProductAttribute,
+        on_delete=models.CASCADE,
+        related_name="variant_attributes",
+    )
+    value = models.ForeignKey(
+        ProductAttributeValue,
+        on_delete=models.CASCADE,
+        related_name="variant_attributes",
+    )
+
+    class Meta:
+        ordering = ["attribute__display_order", "value__display_order"]
+        indexes = [
+            models.Index(fields=["attribute", "value"]),
+            models.Index(fields=["variant", "attribute"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["variant", "attribute"],
+                name="unique_attribute_per_variant",
+            )
+        ]
+
+    def clean(self):
+        errors = {}
+
+        if self.value_id and self.attribute_id:
+            if self.value.attribute_id != self.attribute_id:
+                errors["value"] = (
+                    "Selected value does not belong to selected attribute."
+                )
+
+        if self.variant_id and self.attribute_id:
+            allowed_categories = self.attribute.categories.all()
+
+            if allowed_categories.exists():
+                is_allowed_for_category = allowed_categories.filter(
+                    id=self.variant.product.category_id
+                ).exists()
+
+                if not is_allowed_for_category:
+                    errors["attribute"] = (
+                        "This attribute is not allowed for product category."
+                    )
+
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.variant} | {self.attribute.name}: {self.value.value}"
 
 
 class ProductImage(models.Model):
-    """Product images"""
+    """
+    Product image.
+
+    If variant is empty: common product image.
+    If variant is filled: image belongs to specific variant.
+    """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
     product = models.ForeignKey(
-        Product, on_delete=models.CASCADE, related_name="images"
+        Product,
+        on_delete=models.CASCADE,
+        related_name="images",
     )
     variant = models.ForeignKey(
         ProductVariant,
@@ -330,6 +702,7 @@ class ProductImage(models.Model):
         null=True,
         blank=True,
     )
+
     image_url = models.URLField(max_length=500)
     alt_text = models.CharField(max_length=255, blank=True)
     is_main = models.BooleanField(default=False)
@@ -338,74 +711,149 @@ class ProductImage(models.Model):
 
     class Meta:
         ordering = ["display_order", "id"]
+        indexes = [
+            models.Index(fields=["product", "variant"]),
+            models.Index(fields=["product", "is_main"]),
+            models.Index(fields=["variant", "is_main"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["product"],
+                condition=Q(is_main=True, variant__isnull=True),
+                name="unique_main_product_image",
+            ),
+            models.UniqueConstraint(
+                fields=["variant"],
+                condition=Q(is_main=True, variant__isnull=False),
+                name="unique_main_variant_image",
+            ),
+        ]
+
+    def clean(self):
+        if self.variant_id and self.product_id:
+            if self.variant.product_id != self.product_id:
+                raise ValidationError(
+                    {"variant": "Variant must belong to the selected product."}
+                )
+
+    def save(self, *args, **kwargs):
+        if not self.alt_text and self.product_id:
+            self.alt_text = self.product.name
+
+        self.full_clean()
+        super().save(*args, **kwargs)
 
     def __str__(self):
+        if self.variant_id:
+            return f"Image for {self.variant}"
+
         return f"Image for {self.product.name}"
 
 
 class ProductReview(models.Model):
-    """Product reviews"""
+    """Product review."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
     product = models.ForeignKey(
-        Product, on_delete=models.CASCADE, related_name="reviews"
+        Product,
+        on_delete=models.CASCADE,
+        related_name="reviews",
     )
     user = models.ForeignKey(
-        "Customer", on_delete=models.SET_NULL, null=True, blank=True
+        Customer,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
     )
-    rating = models.IntegerField(choices=[(i, i) for i in range(1, 6)])  # 1-5 stars
+
+    rating = models.IntegerField(choices=[(i, i) for i in range(1, 6)])
     title = models.CharField(max_length=200)
     comment = models.TextField()
+
     is_verified = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["product", "is_active"]),
+            models.Index(fields=["user"]),
+        ]
 
     def __str__(self):
         return f"Review for {self.product.name} by {self.user}"
 
 
 class Cart(models.Model):
-    """User shopping cart"""
+    """User shopping cart."""
 
     user = models.OneToOneField(Customer, on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    def __str__(self):
-        return f"Cart for {self.user.email}"
-
     @property
     def total_price(self):
-        """Total cart price"""
-        return sum(item.total_price for item in self.items.all())
+        return sum(item.total_price for item in self.items.select_related("variant"))
 
     @property
     def total_items(self):
-        """Total number of items in cart"""
         return sum(item.quantity for item in self.items.all())
+
+    def __str__(self):
+        return f"Cart for {self.user.email}"
 
 
 class CartItem(models.Model):
-    """Cart item (now references product variant)"""
+    """
+    Cart item.
 
-    cart = models.ForeignKey(Cart, on_delete=models.CASCADE, related_name="items")
+    Important:
+    CartItem references ProductVariant, not Product.
+    User adds exact selected variant to cart.
+    """
+
+    cart = models.ForeignKey(
+        Cart,
+        on_delete=models.CASCADE,
+        related_name="items",
+    )
     variant = models.ForeignKey(
-        ProductVariant, on_delete=models.CASCADE, related_name="cart_items"
+        ProductVariant,
+        on_delete=models.CASCADE,
+        related_name="cart_items",
     )
     quantity = models.PositiveIntegerField(default=1)
     added_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = ["cart", "variant"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["cart", "variant"],
+                name="unique_variant_per_cart",
+            )
+        ]
 
-    def __str__(self):
-        return f"{self.variant.product.name} - {self.variant.sku} x {self.quantity}"
+    def clean(self):
+        if self.variant_id:
+            if not self.variant.is_active or not self.variant.product.is_active:
+                raise ValidationError({"variant": "Selected variant is not available."})
+
+            if self.quantity > self.variant.stock:
+                raise ValidationError(
+                    {"quantity": "Requested quantity is greater than available stock."}
+                )
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
 
     @property
     def total_price(self):
-        """Total price for this cart item"""
         return self.variant.price * self.quantity
+
+    def __str__(self):
+        return f"{self.variant.product.name} - {self.variant.sku} x {self.quantity}"

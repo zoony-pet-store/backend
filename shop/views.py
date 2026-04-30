@@ -1,44 +1,42 @@
-from django.utils import timezone
 from datetime import timedelta
 
-from django.db.models import Prefetch, Q
-from django.http import HttpRequest, HttpResponse, JsonResponse
-from django.shortcuts import render, get_object_or_404
-from rest_framework.pagination import PageNumberPagination
-from rest_framework.filters import OrderingFilter
+import cloudinary.uploader
+from django.db.models import F, Prefetch, Q
+from django.http import Http404, HttpRequest, HttpResponse, JsonResponse
+from django.shortcuts import get_object_or_404, render
+from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework import status, generics, permissions
+from drf_yasg import openapi
+from drf_yasg.utils import swagger_auto_schema
+from rest_framework import generics, permissions, status
+from rest_framework.filters import OrderingFilter
+from rest_framework.pagination import PageNumberPagination
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import AllowAny
-from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.parsers import MultiPartParser, FormParser
-
+from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView
-from drf_yasg.utils import swagger_auto_schema
-from drf_yasg import openapi
-import cloudinary.uploader
 
 from .models import (
-    Product,
-    Customer,
-    Category,
     AnimalType,
-    ProductImage,
-    ProductVariant,
-    ProductReview,
     Brand,
+    Category,
+    Customer,
+    Product,
+    ProductImage,
+    ProductReview,
+    ProductVariant,
 )
 from .serializers import (
-    UserRegisterSerializer,
-    LoginSerializer,
-    GoogleAuthSerializer,
+    AnimalTypeWithCategoriesSerializer,
     BrandSerializer,
+    CategoryWithChildrenSerializer,
+    GoogleAuthSerializer,
+    LoginSerializer,
     ProductCardSerializer,
     ProductDetailSerializer,
-    ProductVariantSerializer,
-    AnimalTypeWithCategoriesSerializer,
-    CategoryWithChildrenSerializer,
+    UserRegisterSerializer,
 )
 
 
@@ -50,20 +48,146 @@ def index(request: HttpRequest) -> HttpResponse:
     num_products = Product.objects.count()
     count_users = Customer.objects.count()
     count_categories = Category.objects.count()
+
     context = {
         "num_products": num_products,
         "count_users": count_users,
         "count_categories": count_categories,
     }
+
     return render(request, "home_page.html", context)
 
 
 def get_token_for_user(user):
     refresh = RefreshToken.for_user(user)
+
     return {
         "refresh": str(refresh),
         "access": str(refresh.access_token),
     }
+
+
+def get_request_query_params(request):
+    """
+    Return query params for both DRF Request and Django HttpRequest.
+
+    DRF Request has query_params.
+    Django HttpRequest has GET.
+    """
+    query_params = getattr(request, "query_params", None)
+
+    if query_params is not None:
+        return query_params
+
+    return request.GET
+
+
+def get_active_variant_queryset():
+    """
+    Shared optimized queryset for active product variants.
+
+    Important:
+    We no longer use prefetch_related("attributes"),
+    because attributes now live through ProductVariantAttribute.
+    """
+    return (
+        ProductVariant.objects.filter(is_active=True)
+        .prefetch_related(
+            "badges",
+            "images",
+            "variant_attributes__attribute",
+            "variant_attributes__value",
+        )
+        .order_by("-is_default", "display_order", "price")
+    )
+
+
+def get_product_base_queryset():
+    """
+    Shared optimized queryset for product card/list responses.
+
+    Serializers will use obj.active_variants if it exists.
+    """
+    return (
+        Product.objects.filter(is_active=True)
+        .select_related("brand", "category", "category__animal_type")
+        .prefetch_related(
+            "badges",
+            Prefetch(
+                "images",
+                queryset=ProductImage.objects.order_by("display_order", "id"),
+            ),
+            Prefetch(
+                "variants",
+                queryset=get_active_variant_queryset(),
+                to_attr="active_variants",
+            ),
+        )
+    )
+
+
+def get_product_detail_queryset():
+    """
+    Shared optimized queryset for product detail response.
+    """
+    return get_product_base_queryset().prefetch_related(
+        Prefetch(
+            "reviews",
+            queryset=(
+                ProductReview.objects.filter(is_active=True)
+                .select_related("user")
+                .order_by("-created_at")
+            ),
+        )
+    )
+
+
+def get_category_by_path(animal_type_slug: str, category_path: str) -> Category:
+    path_parts = [part for part in category_path.strip("/").split("/") if part]
+
+    if not path_parts:
+        raise Http404("Category path is required.")
+
+    animal_type = get_object_or_404(
+        AnimalType,
+        slug=animal_type_slug,
+        is_active=True,
+    )
+
+    parent = None
+    current_category = None
+
+    for slug in path_parts:
+        current_category = get_object_or_404(
+            Category,
+            animal_type=animal_type,
+            parent=parent,
+            slug=slug,
+            is_active=True,
+        )
+        parent = current_category
+
+    if current_category is None:
+        raise Http404("Category not found.")
+
+    return current_category
+
+
+def get_descendant_category_ids(category: Category) -> list:
+    """
+    Return selected category id and all active descendant ids.
+
+    We query by parent explicitly instead of using category.children,
+    because static analyzers do not always understand Django reverse relations.
+    """
+    category_ids = [category.id]
+
+    children = Category.objects.filter(parent=category, is_active=True).only("id")
+
+    for child in children:
+        category_ids.extend(get_descendant_category_ids(child))
+
+    return category_ids
 
 
 class RegisterView(APIView):
@@ -76,13 +200,16 @@ class RegisterView(APIView):
     )
     def post(self, request):
         serializer = UserRegisterSerializer(data=request.data)
+
         if serializer.is_valid():
             user = serializer.save()
             tokens = get_token_for_user(user)
+
             return Response(
                 {"message": "User registered successfully", "tokens": tokens},
                 status=status.HTTP_201_CREATED,
             )
+
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -96,10 +223,13 @@ class LoginView(APIView):
     )
     def post(self, request):
         serializer = LoginSerializer(data=request.data, context={"request": request})
+
         if serializer.is_valid():
             user = serializer.validated_data["user"]
             tokens = get_token_for_user(user)
+
             return Response({"message": "Login successfully", "tokens": tokens})
+
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -113,12 +243,15 @@ class GoogleAuthView(APIView):
     )
     def post(self, request):
         serializer = GoogleAuthSerializer(data=request.data)
+
         if serializer.is_valid():
             user = serializer.validated_data["user"]
             tokens = get_token_for_user(user)
+
             return Response(
                 {"message": "Google authentication successfully", "tokens": tokens}
             )
+
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -129,7 +262,8 @@ class CustomTokenRefreshView(TokenRefreshView):
             type=openapi.TYPE_OBJECT,
             properties={
                 "refresh": openapi.Schema(
-                    type=openapi.TYPE_STRING, description="Refresh token"
+                    type=openapi.TYPE_STRING,
+                    description="Refresh token",
                 ),
             },
             required=["refresh"],
@@ -145,11 +279,14 @@ class AnimalTypeCategoriesView(APIView):
 
     def get(self, request, animal_type_slug):
         animal_type = get_object_or_404(
-            AnimalType, slug=animal_type_slug, is_active=True
+            AnimalType,
+            slug=animal_type_slug,
+            is_active=True,
         )
 
         serializer = AnimalTypeWithCategoriesSerializer(
-            animal_type, context={"max_depth": 2}
+            animal_type,
+            context={"max_depth": 2},
         )
 
         return Response(serializer.data)
@@ -159,44 +296,29 @@ class CategoryDetailView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def get(self, request, animal_type_slug, category_path):
-        # (food or food/dry-food)
-        path_parts = category_path.strip("/").split("/")
-
-        animal_type = get_object_or_404(
-            AnimalType, slug=animal_type_slug, is_active=True
+        category = get_category_by_path(
+            animal_type_slug=animal_type_slug,
+            category_path=category_path,
         )
 
-        categories = Category.objects.filter(
-            animal_type=animal_type,
-            parent__isnull=True,
-            is_active=True,
-        )
-
-        current_category = None
-        for i, slug in enumerate(path_parts):
-            if i == 0:
-                current_category = get_object_or_404(categories, slug=slug)
-            else:
-                current_category = get_object_or_404(
-                    current_category.children.filter(is_active=True), slug=slug
+        category = get_object_or_404(
+            Category.objects.select_related("animal_type", "parent").prefetch_related(
+                Prefetch(
+                    "children",
+                    queryset=Category.objects.filter(is_active=True).order_by(
+                        "sort_order", "name"
+                    ),
                 )
-
-        current_category = (
-            Category.objects.filter(pk=current_category.pk)
-            .prefetch_related(
-                Prefetch("children", queryset=Category.objects.filter(is_active=True))
-            )
-            .first()
+            ),
+            pk=category.pk,
         )
 
-        serializer = CategoryWithChildrenSerializer(current_category)
+        serializer = CategoryWithChildrenSerializer(category)
 
         return Response({"category": serializer.data})
 
 
 class ProductPagination(PageNumberPagination):
-    """Custom pagination for products"""
-
     page_size = 24
     page_size_query_param = "page_size"
     max_page_size = 100
@@ -205,7 +327,15 @@ class ProductPagination(PageNumberPagination):
 class ProductListView(generics.ListAPIView):
     """
     List all products with filtering, sorting and pagination.
-    Supports filtering by category, brand, animal type, price range, etc.
+
+    Supports:
+    - category id filter;
+    - brand id filter;
+    - animal type slug filter;
+    - rating range;
+    - price range by active variants;
+    - stock availability;
+    - text search.
     """
 
     permission_classes = [permissions.AllowAny]
@@ -213,7 +343,6 @@ class ProductListView(generics.ListAPIView):
     pagination_class = ProductPagination
     filter_backends = [DjangoFilterBackend, OrderingFilter]
 
-    # Fields for DjangoFilterBackend
     filterset_fields = {
         "category": ["exact"],
         "brand": ["exact"],
@@ -221,40 +350,41 @@ class ProductListView(generics.ListAPIView):
         "category__animal_type__slug": ["exact"],
     }
 
-    # Fields available for ordering
     ordering_fields = ["name", "rating", "created_at", "review_count"]
-    ordering = ["-created_at"]  # Default ordering
+    ordering = ["-created_at"]
 
     def get_queryset(self):
-        """Build optimized queryset with all filters applied"""
-        queryset = Product.objects.filter(is_active=True)
+        query_params = get_request_query_params(self.request)
+        queryset = get_product_base_queryset()
 
-        # Filter by price range
-        price_min = self.request.query_params.get("price_min")
-        price_max = self.request.query_params.get("price_max")
+        price_min = query_params.get("price_min")
+        price_max = query_params.get("price_max")
 
         if price_min or price_max:
             variants_qs = ProductVariant.objects.filter(is_active=True)
+
             if price_min:
                 variants_qs = variants_qs.filter(price__gte=price_min)
+
             if price_max:
                 variants_qs = variants_qs.filter(price__lte=price_max)
 
             product_ids = variants_qs.values_list("product_id", flat=True).distinct()
             queryset = queryset.filter(id__in=product_ids)
 
-        # Search by text
-        search = self.request.query_params.get("search")
+        search = query_params.get("search", "").strip()
+
         if search:
             queryset = queryset.filter(
                 Q(name__icontains=search)
                 | Q(description__icontains=search)
+                | Q(short_description__icontains=search)
                 | Q(brand__name__icontains=search)
                 | Q(category__name__icontains=search)
             )
 
-        # Filter by stock availability
-        in_stock = self.request.query_params.get("in_stock")
+        in_stock = query_params.get("in_stock")
+
         if in_stock == "true":
             variants_in_stock = (
                 ProductVariant.objects.filter(is_active=True, stock__gt=0)
@@ -263,30 +393,28 @@ class ProductListView(generics.ListAPIView):
             )
             queryset = queryset.filter(id__in=variants_in_stock)
 
-        # Optimize queries with select_related and prefetch_related
-        queryset = (
-            queryset.select_related("brand", "category", "category__animal_type")
-            .prefetch_related(
-                Prefetch(
-                    "images", queryset=ProductImage.objects.order_by("display_order")
-                ),
-                Prefetch(
-                    "variants",
-                    queryset=ProductVariant.objects.filter(
-                        is_active=True
-                    ).prefetch_related("attributes"),
-                ),
+        elif in_stock == "false":
+            variants_in_stock = (
+                ProductVariant.objects.filter(is_active=True, stock__gt=0)
+                .values_list("product_id", flat=True)
+                .distinct()
             )
-            .distinct()
-        )
+            queryset = queryset.exclude(id__in=variants_in_stock)
 
-        return queryset
+        return queryset.distinct()
 
 
 class ProductDetailView(generics.RetrieveAPIView):
     """
     Retrieve detailed information about a specific product.
-    Includes variants, images, reviews, and all related data.
+
+    Includes:
+    - product data;
+    - product-level images;
+    - full variants;
+    - variant attributes;
+    - variant images;
+    - reviews.
     """
 
     permission_classes = [permissions.AllowAny]
@@ -295,28 +423,7 @@ class ProductDetailView(generics.RetrieveAPIView):
     lookup_url_kwarg = "product_id"
 
     def get_queryset(self):
-        return (
-            Product.objects.filter(is_active=True)
-            .select_related("brand", "category", "category__animal_type")
-            .prefetch_related(
-                Prefetch(
-                    "images",
-                    queryset=ProductImage.objects.order_by("display_order"),
-                ),
-                Prefetch(
-                    "variants",
-                    queryset=ProductVariant.objects.filter(
-                        is_active=True
-                    ).prefetch_related("attributes", "images"),
-                ),
-                Prefetch(
-                    "reviews",
-                    queryset=ProductReview.objects.filter(is_active=True)
-                    .select_related("user")
-                    .order_by("-created_at"),
-                ),
-            )
-        )
+        return get_product_detail_queryset()
 
 
 class DashboardView(APIView):
@@ -325,7 +432,6 @@ class DashboardView(APIView):
     1. New arrivals
     2. Best sellers
     3. Discounted products
-    4. Products selected for dashboard
     """
 
     permission_classes = [permissions.AllowAny]
@@ -333,34 +439,27 @@ class DashboardView(APIView):
     def get(self, request):
         thirty_days_ago = timezone.now() - timedelta(days=30)
 
-        new_arrivals = (
-            Product.objects.filter(created_at__gte=thirty_days_ago, is_active=True)
-            .select_related("brand", "category", "category__animal_type")
-            .prefetch_related("images", "variants")
-            .order_by("-created_at")[:20]
-        )
+        base_queryset = get_product_base_queryset()
 
-        best_sellers = (
-            Product.objects.filter(
-                rating__gte=4.5,
-                review_count__gte=10,
-                is_active=True,
-            )
-            .select_related("brand", "category", "category__animal_type")
-            .prefetch_related("images", "variants")
-            .order_by("-rating", "-review_count")[:20]
-        )
+        new_arrivals = base_queryset.filter(
+            created_at__gte=thirty_days_ago,
+        ).order_by(
+            "-created_at"
+        )[:20]
+
+        best_sellers = base_queryset.filter(
+            rating__gte=4.5,
+            review_count__gte=10,
+        ).order_by("-rating", "-review_count")[:20]
 
         discounted_products = (
-            Product.objects.filter(
-                variants__has_discount=True,
+            base_queryset.filter(
                 variants__is_active=True,
                 variants__stock__gt=0,
-                is_active=True,
+                variants__old_price__isnull=False,
+                variants__old_price__gt=F("variants__price"),
             )
             .distinct()
-            .select_related("brand", "category", "category__animal_type")
-            .prefetch_related("images", "variants")
             .order_by("-created_at")[:20]
         )
 
@@ -368,13 +467,19 @@ class DashboardView(APIView):
 
         data = {
             "new_arrivals": ProductCardSerializer(
-                new_arrivals, many=True, context=context
+                new_arrivals,
+                many=True,
+                context=context,
             ).data,
             "best_sellers": ProductCardSerializer(
-                best_sellers, many=True, context=context
+                best_sellers,
+                many=True,
+                context=context,
             ).data,
             "discounted_products": ProductCardSerializer(
-                discounted_products, many=True, context=context
+                discounted_products,
+                many=True,
+                context=context,
             ).data,
         }
 
@@ -382,16 +487,14 @@ class DashboardView(APIView):
 
 
 class BrandListView(generics.ListAPIView):
-    """List all active brands"""
-
     permission_classes = [permissions.AllowAny]
-    queryset = Brand.objects.filter(is_active=True).order_by("name")
     serializer_class = BrandSerializer
+
+    def get_queryset(self):
+        return Brand.objects.filter(is_active=True).order_by("name")
 
 
 class BrandDetailView(generics.RetrieveAPIView):
-    """Retrieve detailed information about a specific brand"""
-
     permission_classes = [permissions.AllowAny]
     serializer_class = BrandSerializer
     lookup_field = "slug"
@@ -402,8 +505,6 @@ class BrandDetailView(generics.RetrieveAPIView):
 
 
 class RelatedProductsView(generics.ListAPIView):
-    """Get related products for a specific product"""
-
     permission_classes = [permissions.AllowAny]
     serializer_class = ProductCardSerializer
 
@@ -412,21 +513,27 @@ class RelatedProductsView(generics.ListAPIView):
 
         try:
             product = Product.objects.get(id=product_id, is_active=True)
-            return (
-                Product.objects.filter(category=product.category, is_active=True)
-                .exclude(id=product_id)
-                .select_related("brand", "category")
-                .prefetch_related("images", "variants")
-                .order_by("-rating", "-review_count")[:6]
-            )
         except Product.DoesNotExist:
             return Product.objects.none()
+
+        return (
+            get_product_base_queryset()
+            .filter(category=product.category)
+            .exclude(id=product_id)
+            .order_by("-rating", "-review_count")[:6]
+        )
 
 
 class ProductSearchView(generics.ListAPIView):
     """
     Search products by text query.
-    Searches in name, description, brand name, and category name.
+
+    Searches in:
+    - name;
+    - description;
+    - short_description;
+    - brand name;
+    - category name.
     """
 
     permission_classes = [permissions.AllowAny]
@@ -434,28 +541,32 @@ class ProductSearchView(generics.ListAPIView):
     pagination_class = ProductPagination
 
     def get_queryset(self):
-        query = self.request.query_params.get("q", "").strip()
+        query_params = get_request_query_params(self.request)
+        query = query_params.get("q", "").strip()
+
         if not query or len(query) < 2:
             return Product.objects.none()
 
         return (
-            Product.objects.filter(
+            get_product_base_queryset()
+            .filter(
                 Q(name__icontains=query)
                 | Q(description__icontains=query)
                 | Q(short_description__icontains=query)
                 | Q(brand__name__icontains=query)
                 | Q(category__name__icontains=query)
             )
-            .filter(is_active=True)
-            .select_related("brand", "category")
-            .prefetch_related("images", "variants")
             .distinct()
         )
 
 
 class CategoryProductsView(generics.ListAPIView):
     """
-    Simple version that finds category by last slug in path.
+    List products for category path.
+
+    By default includes products from selected category and all its subcategories.
+    To include only selected category, pass:
+    ?include_subcategories=false
     """
 
     permission_classes = [permissions.AllowAny]
@@ -466,45 +577,53 @@ class CategoryProductsView(generics.ListAPIView):
         animal_type_slug = self.kwargs["animal_type_slug"]
         category_path = self.kwargs["category_path"]
 
-        print(f"=== DEBUG ===")
-        print(
-            f"Request: animal_type_slug={animal_type_slug}, category_path={category_path}"
+        try:
+            category = get_category_by_path(
+                animal_type_slug=animal_type_slug,
+                category_path=category_path,
+            )
+        except Http404:
+            return Product.objects.none()
+
+        query_params = get_request_query_params(self.request)
+        include_subcategories = query_params.get(
+            "include_subcategories",
+            "true",
         )
 
-        # Get the last part of the path
-        target_slug = category_path.strip("/").split("/")[-1]
-        print(f"Target slug: {target_slug}")
+        if include_subcategories == "false":
+            category_ids = [category.id]
+        else:
+            category_ids = get_descendant_category_ids(category)
 
-        # Try to find the category
-        try:
-            animal_type = AnimalType.objects.get(slug=animal_type_slug, is_active=True)
-            print(f"Found animal_type: {animal_type}")
-
-            # Try to find category with this slug for this animal_type
-            category = Category.objects.get(
-                animal_type=animal_type, slug=target_slug, is_active=True
-            )
-            print(f"Found category: {category.name} (parent: {category.parent})")
-
-            # Get products in this category (just this category, not subcategories)
-            products = Product.objects.filter(category=category, is_active=True)
-            print(f"Found {products.count()} products")
-
-            return products.select_related("brand", "category").prefetch_related(
-                "images", "variants"
-            )
-
-        except (AnimalType.DoesNotExist, Category.DoesNotExist) as e:
-            print(f"ERROR: {e}")
-            return Product.objects.none()
+        return (
+            get_product_base_queryset().filter(category_id__in=category_ids).distinct()
+        )
 
 
 class ProductImageUploadView(APIView):
+    """
+    Upload product or variant image to Cloudinary.
+
+    Required:
+    - product_id
+    - image
+
+    Optional:
+    - variant_id
+    - alt_text
+    - is_main
+    - display_order
+
+    If variant_id is provided, image is attached to this variant.
+    If variant_id is not provided, image is attached to product as common image.
+    """
+
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
 
     @swagger_auto_schema(
-        operation_description="Upload product image to Cloudinary",
+        operation_description="Upload product or variant image to Cloudinary",
         manual_parameters=[
             openapi.Parameter(
                 name="product_id",
@@ -514,11 +633,41 @@ class ProductImageUploadView(APIView):
                 description="Product UUID",
             ),
             openapi.Parameter(
+                name="variant_id",
+                in_=openapi.IN_FORM,
+                type=openapi.TYPE_STRING,
+                required=False,
+                description=(
+                    "Variant UUID. Optional. " "If provided, image belongs to variant."
+                ),
+            ),
+            openapi.Parameter(
                 name="image",
                 in_=openapi.IN_FORM,
                 type=openapi.TYPE_FILE,
                 required=True,
-                description="Image file (max 5MB)",
+                description="Image file, max 5MB",
+            ),
+            openapi.Parameter(
+                name="alt_text",
+                in_=openapi.IN_FORM,
+                type=openapi.TYPE_STRING,
+                required=False,
+                description="Image alt text",
+            ),
+            openapi.Parameter(
+                name="is_main",
+                in_=openapi.IN_FORM,
+                type=openapi.TYPE_BOOLEAN,
+                required=False,
+                description="Set image as main image",
+            ),
+            openapi.Parameter(
+                name="display_order",
+                in_=openapi.IN_FORM,
+                type=openapi.TYPE_INTEGER,
+                required=False,
+                description="Display order",
             ),
         ],
         responses={
@@ -530,11 +679,16 @@ class ProductImageUploadView(APIView):
                         "id": openapi.Schema(type=openapi.TYPE_STRING),
                         "url": openapi.Schema(type=openapi.TYPE_STRING),
                         "public_id": openapi.Schema(type=openapi.TYPE_STRING),
+                        "product_id": openapi.Schema(type=openapi.TYPE_STRING),
+                        "variant_id": openapi.Schema(type=openapi.TYPE_STRING),
+                        "is_main": openapi.Schema(type=openapi.TYPE_BOOLEAN),
+                        "display_order": openapi.Schema(type=openapi.TYPE_INTEGER),
                     },
                 ),
             ),
             400: "Bad Request",
             401: "Unauthorized",
+            404: "Not Found",
         },
     )
     def post(self, request):
@@ -553,6 +707,7 @@ class ProductImageUploadView(APIView):
             )
 
         product_id = request.data.get("product_id")
+
         if not product_id:
             return Response(
                 {"error": "product_id is required"},
@@ -560,6 +715,31 @@ class ProductImageUploadView(APIView):
             )
 
         product = get_object_or_404(Product, id=product_id)
+        variant_id = request.data.get("variant_id")
+
+        variant = None
+
+        if variant_id:
+            variant = get_object_or_404(
+                ProductVariant,
+                id=variant_id,
+                product=product,
+            )
+
+        alt_text = request.data.get("alt_text", "")
+
+        is_main_raw = request.data.get("is_main", "false")
+        is_main = str(is_main_raw).lower() in ["true", "1", "yes", "on"]
+
+        display_order_raw = request.data.get("display_order", 0)
+
+        try:
+            display_order = int(display_order_raw)
+        except (TypeError, ValueError):
+            return Response(
+                {"error": "display_order must be an integer"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         result = cloudinary.uploader.upload(
             file,
@@ -567,9 +747,27 @@ class ProductImageUploadView(APIView):
             resource_type="image",
         )
 
+        if is_main:
+            if variant:
+                ProductImage.objects.filter(
+                    product=product,
+                    variant=variant,
+                    is_main=True,
+                ).update(is_main=False)
+            else:
+                ProductImage.objects.filter(
+                    product=product,
+                    variant__isnull=True,
+                    is_main=True,
+                ).update(is_main=False)
+
         image = ProductImage.objects.create(
             product=product,
+            variant=variant,
             image_url=result["secure_url"],
+            alt_text=alt_text,
+            is_main=is_main,
+            display_order=display_order,
             cloudinary_public_id=result["public_id"],
         )
 
@@ -578,6 +776,10 @@ class ProductImageUploadView(APIView):
                 "id": str(image.id),
                 "url": image.image_url,
                 "public_id": image.cloudinary_public_id,
+                "product_id": str(product.id),
+                "variant_id": str(variant.id) if variant else None,
+                "is_main": image.is_main,
+                "display_order": image.display_order,
             },
             status=status.HTTP_201_CREATED,
         )

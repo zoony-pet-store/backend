@@ -16,7 +16,17 @@ from shop.models import (
     ProductAttributeValue,
     ProductImage,
     ProductVariant,
+    ProductVariantAttribute,
 )
+
+
+ATTRIBUTE_COLUMNS = {
+    "size": "Size",
+    "color": "Color",
+    "material": "Material",
+    "flavor": "Flavor",
+    "age": "Age",
+}
 
 
 class Command(BaseCommand):
@@ -29,6 +39,11 @@ class Command(BaseCommand):
             required=True,
             help="Path to CSV file exported from Mockaroo",
         )
+        parser.add_argument(
+            "--replace",
+            action="store_true",
+            help="Delete previously imported MOCK products before import",
+        )
 
     def handle(self, *args, **options):
         file_path = Path(options["file"])
@@ -36,10 +51,18 @@ class Command(BaseCommand):
         if not file_path.exists():
             raise CommandError(f"File not found: {file_path}")
 
+        if options["replace"]:
+            deleted_count = self.delete_existing_mock_products()
+            self.stdout.write(
+                self.style.WARNING(f"Deleted existing mock products: {deleted_count}")
+            )
+
         created_products = 0
-        skipped_products = 0
+        reused_products = 0
         created_variants = 0
-        created_images = 0
+        created_product_images = 0
+        created_variant_images = 0
+        skipped_rows = 0
 
         with file_path.open("r", encoding="utf-8-sig", newline="") as csv_file:
             reader = csv.DictReader(csv_file)
@@ -63,38 +86,41 @@ class Command(BaseCommand):
             }
 
             missing_fields = required_fields - set(reader.fieldnames or [])
+
             if missing_fields:
                 raise CommandError(
-                    f"CSV is missing required fields: {', '.join(sorted(missing_fields))}"
+                    f"CSV is missing required fields: "
+                    f"{', '.join(sorted(missing_fields))}"
                 )
 
             for row_number, row in enumerate(reader, start=2):
                 try:
                     with transaction.atomic():
-                        product, image_created, variant_created = self.import_row(row)
+                        result = self.import_row(row)
 
-                        if product is None:
-                            skipped_products += 1
-                            self.stdout.write(
-                                self.style.WARNING(
-                                    f"Skipped row {row_number}: duplicate or invalid product"
-                                )
-                            )
-                            continue
-
+                    if result["product_created"]:
                         created_products += 1
-                        if image_created:
-                            created_images += 1
-                        if variant_created:
-                            created_variants += 1
+                    else:
+                        reused_products += 1
 
-                        self.stdout.write(
-                            self.style.SUCCESS(
-                                f"Imported row {row_number}: {product.name}"
-                            )
+                    if result["variant_created"]:
+                        created_variants += 1
+
+                    if result["product_image_created"]:
+                        created_product_images += 1
+
+                    if result["variant_image_created"]:
+                        created_variant_images += 1
+
+                    self.stdout.write(
+                        self.style.SUCCESS(
+                            f"Imported row {row_number}: "
+                            f"{result['product'].name} / {result['variant'].sku}"
                         )
+                    )
 
                 except Exception as exc:
+                    skipped_rows += 1
                     self.stderr.write(
                         self.style.ERROR(f"Row {row_number} failed: {exc}")
                     )
@@ -102,9 +128,31 @@ class Command(BaseCommand):
         self.stdout.write("")
         self.stdout.write(self.style.SUCCESS("Import finished"))
         self.stdout.write(f"Created products: {created_products}")
+        self.stdout.write(f"Reused products: {reused_products}")
         self.stdout.write(f"Created variants: {created_variants}")
-        self.stdout.write(f"Created images: {created_images}")
-        self.stdout.write(f"Skipped rows: {skipped_products}")
+        self.stdout.write(f"Created product images: {created_product_images}")
+        self.stdout.write(f"Created variant images: {created_variant_images}")
+        self.stdout.write(f"Skipped rows: {skipped_rows}")
+
+    def delete_existing_mock_products(self):
+        """
+        Deletes products that were imported as mock data.
+
+        We identify them by variants with SKU starting with MOCK-.
+        Since ProductImage, ProductVariant, ProductVariantAttribute are linked by CASCADE,
+        deleting Product will clean related mock data too.
+        """
+        product_ids = (
+            Product.objects.filter(variants__sku__startswith="MOCK-")
+            .values_list("id", flat=True)
+            .distinct()
+        )
+
+        queryset = Product.objects.filter(id__in=product_ids)
+        count = queryset.count()
+        queryset.delete()
+
+        return count
 
     def import_row(self, row):
         name = self.clean_value(row.get("name"))
@@ -127,11 +175,14 @@ class Command(BaseCommand):
         if not category:
             raise CommandError(f"Category not found for path: {category_path}")
 
-        slug = self.build_unique_product_slug(name, category)
-
-        existing_product = Product.objects.filter(slug=slug, category=category).first()
-        if existing_product:
-            return None, False, False
+        product, product_created = self.get_or_create_product(
+            name=name,
+            brand=brand,
+            category=category,
+            short_description=short_description,
+            description=description,
+            main_image=main_image,
+        )
 
         price = self.parse_decimal(row.get("price"), required=True)
         old_price = self.parse_decimal(row.get("old_price"), required=False)
@@ -141,11 +192,81 @@ class Command(BaseCommand):
         if old_price is not None and old_price <= price:
             old_price = None
 
-        has_discount = old_price is not None and old_price > price
+        is_default = not product.variants.exists()
+
+        variant = ProductVariant.objects.create(
+            product=product,
+            sku=self.generate_sku(product),
+            price=price,
+            old_price=old_price,
+            stock=stock,
+            weight=weight,
+            is_active=True,
+            is_default=is_default,
+        )
+
+        for column_name, attribute_name in ATTRIBUTE_COLUMNS.items():
+            self.attach_attribute_if_present(
+                variant=variant,
+                attribute_name=attribute_name,
+                raw_value=row.get(column_name),
+            )
+
+        product_image_created = False
+        variant_image_created = False
+
+        if main_image:
+            product_image_created = self.ensure_product_image(
+                product=product,
+                image_url=main_image,
+                alt_text=name,
+                is_main=is_default,
+            )
+
+            variant_image_created = self.create_variant_image(
+                product=product,
+                variant=variant,
+                image_url=main_image,
+                alt_text=name,
+                is_main=True,
+            )
+
+        return {
+            "product": product,
+            "variant": variant,
+            "product_created": product_created,
+            "variant_created": True,
+            "product_image_created": product_image_created,
+            "variant_image_created": variant_image_created,
+        }
+
+    def get_or_create_product(
+        self,
+        name,
+        brand,
+        category,
+        short_description,
+        description,
+        main_image,
+    ):
+        """
+        Reuse product if same name + brand + category already exists.
+
+        This allows CSV to contain several rows for the same product,
+        where each row represents a separate variant.
+        """
+        product = Product.objects.filter(
+            name=name,
+            brand=brand,
+            category=category,
+        ).first()
+
+        if product:
+            return product, False
 
         product = Product.objects.create(
             name=name,
-            slug=slug,
+            slug=self.build_unique_product_slug(name, category),
             description=description or "",
             short_description=short_description or "",
             brand=brand,
@@ -156,40 +277,68 @@ class Command(BaseCommand):
             main_image=main_image or "",
         )
 
-        image_created = False
-        if main_image:
-            ProductImage.objects.create(
-                product=product,
-                image_url=main_image,
-                alt_text=name,
-                is_main=True,
-                display_order=0,
-            )
-            image_created = True
+        return product, True
 
-        sku = self.generate_sku(product)
-        variant = ProductVariant.objects.create(
+    def ensure_product_image(self, product, image_url, alt_text, is_main=False):
+        """
+        Create product-level image only if the same image does not already exist.
+
+        Product-level image has variant=None.
+        """
+        exists = ProductImage.objects.filter(
             product=product,
-            sku=sku,
-            price=price,
-            old_price=old_price,
-            stock=stock,
-            is_active=True,
-            has_discount=has_discount,
-            weight=weight,
+            variant__isnull=True,
+            image_url=image_url,
+        ).exists()
+
+        if exists:
+            return False
+
+        if is_main:
+            ProductImage.objects.filter(
+                product=product,
+                variant__isnull=True,
+                is_main=True,
+            ).update(is_main=False)
+
+        ProductImage.objects.create(
+            product=product,
+            variant=None,
+            image_url=image_url,
+            alt_text=alt_text,
+            is_main=is_main,
+            display_order=0,
         )
-        variant_created = True
 
-        self.attach_attribute_if_present(variant, "Size", row.get("size"))
-        self.attach_attribute_if_present(variant, "Color", row.get("color"))
-        self.attach_attribute_if_present(variant, "Material", row.get("material"))
-        self.attach_attribute_if_present(variant, "Flavor", row.get("flavor"))
-        self.attach_attribute_if_present(variant, "Age", row.get("age"))
+        return True
 
-        return product, image_created, variant_created
+    def create_variant_image(self, product, variant, image_url, alt_text, is_main=True):
+        """
+        Create variant-specific image.
+
+        This lets frontend switch image when user selects another variant.
+        """
+        if is_main:
+            ProductImage.objects.filter(
+                product=product,
+                variant=variant,
+                is_main=True,
+            ).update(is_main=False)
+
+        ProductImage.objects.create(
+            product=product,
+            variant=variant,
+            image_url=image_url,
+            alt_text=alt_text,
+            is_main=is_main,
+            display_order=0,
+        )
+
+        return True
 
     def get_category_by_path(self, category_path):
-        parts = category_path.strip("/").split("/")
+        parts = [part for part in category_path.strip("/").split("/") if part]
+
         if len(parts) < 2:
             return None
 
@@ -200,6 +349,7 @@ class Command(BaseCommand):
             slug=animal_type_slug,
             is_active=True,
         ).first()
+
         if not animal_type:
             return None
 
@@ -209,6 +359,7 @@ class Command(BaseCommand):
             parent__isnull=True,
             is_active=True,
         ).first()
+
         if not current:
             return None
 
@@ -219,6 +370,7 @@ class Command(BaseCommand):
                 parent=current,
                 is_active=True,
             ).first()
+
             if not current:
                 return None
 
@@ -226,19 +378,36 @@ class Command(BaseCommand):
 
     def attach_attribute_if_present(self, variant, attribute_name, raw_value):
         value = self.clean_value(raw_value)
+
         if not value:
             return
 
-        attribute = ProductAttribute.objects.filter(name=attribute_name).first()
-        if not attribute:
-            return
+        attribute_slug = slugify(attribute_name)
+        value_slug = slugify(value)
+
+        attribute, _ = ProductAttribute.objects.get_or_create(
+            slug=attribute_slug,
+            defaults={
+                "name": attribute_name,
+                "filterable": True,
+            },
+        )
 
         attr_value, _ = ProductAttributeValue.objects.get_or_create(
             attribute=attribute,
-            slug=slugify(value),
-            defaults={"value": value},
+            slug=value_slug,
+            defaults={
+                "value": value,
+            },
         )
-        variant.attributes.add(attr_value)
+
+        ProductVariantAttribute.objects.update_or_create(
+            variant=variant,
+            attribute=attribute,
+            defaults={
+                "value": attr_value,
+            },
+        )
 
     def build_unique_product_slug(self, name, category):
         base_slug = slugify(name)
@@ -252,18 +421,28 @@ class Command(BaseCommand):
         return slug
 
     def generate_sku(self, product):
-        return (
-            f"MOCK-{slugify(product.name)[:20].upper()}-{uuid.uuid4().hex[:6].upper()}"
-        )
+        product_slug_part = slugify(product.name).replace("-", "").upper()[:20]
+        suffix = uuid.uuid4().hex[:6].upper()
+
+        return f"MOCK-{product_slug_part}-{suffix}"
 
     def clean_value(self, value):
         if value is None:
             return None
+
         value = str(value).strip()
-        return value or None
+
+        if not value:
+            return None
+
+        if value.lower() in ["nan", "none", "null"]:
+            return None
+
+        return value
 
     def parse_decimal(self, value, required=False):
         value = self.clean_value(value)
+
         if value is None:
             if required:
                 raise CommandError("Missing required decimal value")
@@ -278,6 +457,7 @@ class Command(BaseCommand):
 
     def parse_int(self, value, default=0):
         value = self.clean_value(value)
+
         if value is None:
             return default
 

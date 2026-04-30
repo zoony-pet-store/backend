@@ -1,27 +1,29 @@
-from django.db.models import Prefetch
-from rest_framework import serializers
-from django.contrib.auth.password_validation import validate_password
-from django.core.validators import validate_email
-from django.core.exceptions import ValidationError, ObjectDoesNotExist
-from django.utils.translation import gettext_lazy as _
-from django.utils import timezone
-from google.oauth2 import id_token
-from google.auth.transport import requests
-from django.conf import settings
-from .models import (
-    Customer,
-    Category,
-    AnimalType,
-    Brand,
-    Badge,
-    ProductAttributeValue,
-    ProductVariant,
-    ProductImage,
-    ProductReview,
-    Product,
-)
+from datetime import timedelta
 import logging
 import random
+
+from django.conf import settings
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ObjectDoesNotExist, ValidationError
+from django.core.validators import validate_email
+from django.db.models import Prefetch
+from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
+from google.auth.transport import requests
+from google.oauth2 import id_token
+from rest_framework import serializers
+
+from .models import (
+    AnimalType,
+    Badge,
+    Brand,
+    Category,
+    Customer,
+    Product,
+    ProductImage,
+    ProductReview,
+    ProductVariant,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -29,7 +31,9 @@ logger = logging.getLogger(__name__)
 
 class UserRegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(
-        write_only=True, required=True, validators=[validate_password]
+        write_only=True,
+        required=True,
+        validators=[validate_password],
     )
     password2 = serializers.CharField(write_only=True, required=True)
 
@@ -50,6 +54,7 @@ class UserRegisterSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 _("A user with that email already exists.")
             )
+
         return value
 
     def validate(self, attrs):
@@ -57,15 +62,16 @@ class UserRegisterSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {"password": _("Password fields didn't match.")}
             )
+
         return attrs
 
     def create(self, validated_data):
         validated_data.pop("password2")
+
         user = Customer.objects.create_user(
             email=validated_data["email"],
             password=validated_data["password"],
         )
-
         user.email_verified = True
         user.save()
 
@@ -105,21 +111,26 @@ class GoogleAuthSerializer(serializers.Serializer):
         base_username = email.split("@")[0]
         username = base_username
         counter = 1
+
         while Customer.objects.filter(username=username).exists():
             username = f"{base_username}_{random.randint(100, 999)}"
             counter += 1
+
             if counter > 10:
                 username = f"user_{random.randint(1000, 9999)}"
                 break
+
         return username
 
     def validate_token(self, value):
         try:
             idinfo = id_token.verify_oauth2_token(
-                value, requests.Request(), settings.SOCIAL_AUTH_GOOGLE_OAUTH2_KEY
+                value,
+                requests.Request(),
+                settings.SOCIAL_AUTH_GOOGLE_OAUTH2_KEY,
             )
-        except ValueError as e:
-            logger.error(f"Google token validation failed: {e}")
+        except ValueError as error:
+            logger.error("Google token validation failed: %s", error)
             raise serializers.ValidationError(_("Invalid Google token."))
 
         if idinfo.get("iss") not in [
@@ -132,6 +143,7 @@ class GoogleAuthSerializer(serializers.Serializer):
             raise serializers.ValidationError(_("Token audience mismatch."))
 
         email = idinfo.get("email")
+
         if not email:
             raise serializers.ValidationError(_("No email in token."))
 
@@ -146,7 +158,7 @@ class GoogleAuthSerializer(serializers.Serializer):
         )
 
         if created:
-            logger.info(f"New user created via Google Auth: {email}")
+            logger.info("New user created via Google Auth: %s", email)
 
         self.context["user"] = user
         return value
@@ -156,7 +168,6 @@ class GoogleAuthSerializer(serializers.Serializer):
         return attrs
 
 
-# ========== ANIMAL TYPE SERIALIZERS ==========
 class AnimalTypeSerializer(serializers.ModelSerializer):
     class Meta:
         model = AnimalType
@@ -165,14 +176,11 @@ class AnimalTypeSerializer(serializers.ModelSerializer):
 
 
 class AnimalTypeCreateSerializer(serializers.ModelSerializer):
-    """Serializer for creating animal types (without ID)"""
-
     class Meta:
         model = AnimalType
         fields = ["name", "slug", "icon", "is_active"]
 
 
-# ========== CATEGORY SERIALIZERS FOR ADMIN ==========
 class CategoryDetailSerializer(serializers.ModelSerializer):
     animal_type = AnimalTypeSerializer(read_only=True)
     parent = serializers.SerializerMethodField()
@@ -199,13 +207,30 @@ class CategoryDetailSerializer(serializers.ModelSerializer):
         ]
 
     def get_parent(self, obj):
-        if obj.parent:
-            return {
-                "id": obj.parent.id,
-                "name": obj.parent.name,
-                "slug": obj.parent.slug,
-            }
-        return None
+        if not obj.parent:
+            return None
+
+        return {
+            "id": str(obj.parent.id),
+            "name": obj.parent.name,
+            "slug": obj.parent.slug,
+        }
+
+    def get_breadcrumbs(self, obj):
+        breadcrumbs = []
+        current = obj
+
+        while current:
+            breadcrumbs.append(
+                {
+                    "id": str(current.id),
+                    "name": current.name,
+                    "slug": current.slug,
+                }
+            )
+            current = current.parent
+
+        return list(reversed(breadcrumbs))
 
     def get_children_count(self, obj):
         return obj.children.filter(is_active=True).count()
@@ -215,10 +240,9 @@ class CategoryDetailSerializer(serializers.ModelSerializer):
 
 
 class CategoryCreateUpdateSerializer(serializers.ModelSerializer):
-    """Serializer for creating and updating categories"""
-
     animal_type = serializers.SlugRelatedField(
-        slug_field="slug", queryset=AnimalType.objects.all()
+        slug_field="slug",
+        queryset=AnimalType.objects.all(),
     )
     parent = serializers.SlugRelatedField(
         slug_field="slug",
@@ -242,25 +266,19 @@ class CategoryCreateUpdateSerializer(serializers.ModelSerializer):
         extra_kwargs = {"slug": {"required": False}}
 
 
-# ========== CATEGORY SERIALIZERS FOR FRONTEND ==========
 class CategorySerializer(serializers.ModelSerializer):
-    """Basic category serializer with minimal fields"""
-
     class Meta:
         model = Category
         fields = ["name", "slug", "image_url"]
 
 
 class CategoryTreeSerializer(CategorySerializer):
-    """Recursive category serializer for tree structure"""
-
     subcategories = serializers.SerializerMethodField()
 
     class Meta(CategorySerializer.Meta):
         fields = ["name", "slug", "image_url", "subcategories"]
 
     def get_subcategories(self, obj):
-        # Get prefetched children if available
         if hasattr(obj, "prefetched_children"):
             children = obj.prefetched_children
         elif hasattr(obj, "children"):
@@ -268,26 +286,24 @@ class CategoryTreeSerializer(CategorySerializer):
         else:
             children = Category.objects.filter(parent=obj, is_active=True)
 
-        # Control recursion depth
         max_depth = self.context.get("max_depth", 3)
         current_depth = self.context.get("current_depth", 0)
 
         if current_depth >= max_depth:
             return []
 
-        # Create context for child serializers
         child_context = self.context.copy()
         child_context["current_depth"] = current_depth + 1
 
-        return CategoryTreeSerializer(children, many=True, context=child_context).data
+        return CategoryTreeSerializer(
+            children,
+            many=True,
+            context=child_context,
+        ).data
 
     def to_representation(self, instance):
-        """
-        Custom representation to hide image_url for root categories.
-        """
         representation = super().to_representation(instance)
 
-        # Hide image_url for root categories (parent is None)
         if instance.parent is None:
             representation.pop("image_url", None)
 
@@ -295,8 +311,6 @@ class CategoryTreeSerializer(CategorySerializer):
 
 
 class CategoryWithChildrenSerializer(CategorySerializer):
-    """Serializer for category with direct children only"""
-
     subcategories = serializers.SerializerMethodField()
 
     class Meta(CategorySerializer.Meta):
@@ -307,10 +321,7 @@ class CategoryWithChildrenSerializer(CategorySerializer):
         return CategorySerializer(children, many=True).data
 
 
-# ========== ANIMAL TYPE WITH CATEGORIES ==========
 class AnimalTypeWithCategoriesSerializer(serializers.ModelSerializer):
-    """Serializer for animal type with full category tree"""
-
     categories = serializers.SerializerMethodField()
     icon = serializers.CharField(read_only=True)
 
@@ -319,15 +330,16 @@ class AnimalTypeWithCategoriesSerializer(serializers.ModelSerializer):
         fields = ["name", "slug", "icon", "image_url", "categories"]
 
     def get_categories(self, obj):
-        # Get root categories with prefetched children
         root_categories = obj.categories.filter(
-            parent__isnull=True, is_active=True
+            parent__isnull=True,
+            is_active=True,
         ).prefetch_related(
             Prefetch(
                 "children",
                 queryset=Category.objects.filter(is_active=True).prefetch_related(
                     Prefetch(
-                        "children", queryset=Category.objects.filter(is_active=True)
+                        "children",
+                        queryset=Category.objects.filter(is_active=True),
                     )
                 ),
             )
@@ -348,57 +360,117 @@ class BrandSerializer(serializers.ModelSerializer):
         fields = ["id", "name", "slug", "description", "logo_url", "is_active"]
 
 
-class ProductAttributeValueSerializer(serializers.ModelSerializer):
-    """Serializer for product attribute values (size, color, volume, etc.)"""
-
-    attribute_name = serializers.CharField(source="attribute.name", read_only=True)
-
+class BrandMinimalSerializer(serializers.ModelSerializer):
     class Meta:
-        model = ProductAttributeValue
-        fields = ["id", "attribute", "attribute_name", "value", "slug"]
+        model = Brand
+        fields = ["id", "name", "slug", "logo_url"]
+
+
+class BadgeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Badge
+        fields = ["id", "name", "slug", "label", "color", "background_color"]
+        read_only_fields = ["id"]
 
 
 class ProductImageSerializer(serializers.ModelSerializer):
-    """Serializer for product images"""
-
     class Meta:
         model = ProductImage
         fields = ["id", "image_url", "alt_text", "is_main", "display_order"]
 
 
 class ProductVariantSerializer(serializers.ModelSerializer):
-    """Serializer for product variants (different sizes, colors, etc.)"""
-
-    attributes = ProductAttributeValueSerializer(many=True, read_only=True)
+    attributes = serializers.SerializerMethodField()
     images = serializers.SerializerMethodField()
+    badges = BadgeSerializer(many=True, read_only=True)
+    has_discount = serializers.BooleanField(read_only=True)
+    discount_percentage = serializers.IntegerField(read_only=True)
+    in_stock = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = ProductVariant
         fields = [
             "id",
             "sku",
+            "attributes",
             "price",
             "old_price",
             "has_discount",
             "discount_percentage",
             "stock",
+            "in_stock",
             "weight",
-            "attributes",
+            "description",
+            "short_description",
+            "badges",
             "images",
+            "is_default",
             "is_active",
+            "display_order",
         ]
 
+    def get_attributes(self, obj):
+        return {
+            item.attribute.name: {
+                "id": str(item.value.id),
+                "value": item.value.value,
+                "slug": item.value.slug,
+            }
+            for item in obj.variant_attributes.all()
+        }
+
     def get_images(self, obj):
-        # Return variant-specific images, fallback to product images
-        images = obj.images.all()
-        if not images.exists():
-            images = obj.product.images.all()
+        images = list(obj.images.all())
         return ProductImageSerializer(images, many=True).data
 
 
-class ProductReviewItemSerializer(serializers.ModelSerializer):
-    """Serializer for product review item in product detail response"""
+class ProductVariantCardSerializer(serializers.ModelSerializer):
+    attributes = serializers.SerializerMethodField()
+    image_url = serializers.SerializerMethodField()
+    badges = BadgeSerializer(many=True, read_only=True)
+    has_discount = serializers.BooleanField(read_only=True)
+    discount_percentage = serializers.IntegerField(read_only=True)
+    in_stock = serializers.BooleanField(read_only=True)
 
+    class Meta:
+        model = ProductVariant
+        fields = [
+            "id",
+            "sku",
+            "attributes",
+            "price",
+            "old_price",
+            "has_discount",
+            "discount_percentage",
+            "stock",
+            "in_stock",
+            "image_url",
+            "badges",
+            "is_default",
+            "display_order",
+        ]
+
+    def get_attributes(self, obj):
+        return {
+            item.attribute.name: item.value.value
+            for item in obj.variant_attributes.all()
+        }
+
+    def get_image_url(self, obj):
+        images = list(obj.images.all())
+
+        main_image = next((image for image in images if image.is_main), None)
+        if main_image:
+            return main_image.image_url
+
+        first_image = images[0] if images else None
+        if first_image:
+            return first_image.image_url
+
+        return None
+
+
+class ProductReviewItemSerializer(serializers.ModelSerializer):
     username = serializers.SerializerMethodField()
     image_urls = serializers.SerializerMethodField()
     positive_comment = serializers.SerializerMethodField()
@@ -421,27 +493,32 @@ class ProductReviewItemSerializer(serializers.ModelSerializer):
     def get_username(self, obj):
         if obj.user:
             full_name = obj.user.get_full_name().strip()
+
             if full_name:
                 return full_name
+
             if obj.user.username:
                 return obj.user.username
+
             if obj.user.email:
                 return obj.user.email.split("@")[0]
+
         return "Anonymous"
 
     def get_image_urls(self, obj):
+        del obj
         return []
 
     def get_positive_comment(self, obj):
+        del obj
         return None
 
     def get_negative_comment(self, obj):
+        del obj
         return None
 
 
 class ProductReviewSerializer(serializers.ModelSerializer):
-    """Serializer for product reviews"""
-
     user_name = serializers.CharField(source="user.get_full_name", read_only=True)
 
     class Meta:
@@ -460,26 +537,17 @@ class ProductReviewSerializer(serializers.ModelSerializer):
         read_only_fields = ["user"]
 
 
-class BadgeSerializer(serializers.ModelSerializer):
-    """Serializer for Badge model"""
-
-    class Meta:
-        model = Badge
-        fields = ["id", "name", "slug", "label", "color", "background_color"]
-        read_only_fields = ["id"]
-
-
 class ProductCardSerializer(serializers.ModelSerializer):
-    """Serializer for product short version (product card in listings)"""
-
     brand = serializers.SerializerMethodField()
     image_url = serializers.SerializerMethodField()
     price = serializers.SerializerMethodField()
     old_price = serializers.SerializerMethodField()
     discount_percentage = serializers.SerializerMethodField()
-    in_stock = serializers.SerializerMethodField()
+    in_stock = serializers.BooleanField(read_only=True)
     badges = serializers.SerializerMethodField()
-    variants_display = serializers.SerializerMethodField()
+    variants = serializers.SerializerMethodField()
+    available_attributes = serializers.SerializerMethodField()
+    default_variant_id = serializers.SerializerMethodField()
     category_slug = serializers.CharField(source="category.slug")
     animal_type_slug = serializers.CharField(source="category.animal_type.slug")
 
@@ -497,163 +565,269 @@ class ProductCardSerializer(serializers.ModelSerializer):
             "rating",
             "review_count",
             "badges",
-            "variants_display",
+            "available_attributes",
+            "default_variant_id",
+            "variants",
             "category_slug",
             "animal_type_slug",
         ]
 
-    def get_brand(self, obj):
-        return obj.brand.name if obj.brand else None
+    def _get_active_variants(self, obj):
+        if hasattr(obj, "active_variants"):
+            return list(obj.active_variants)
 
-    def get_image_url(self, obj):
-        main_image = obj.images.filter(is_main=True).first()
-        if main_image:
-            return main_image.image_url
-        first_image = obj.images.first()
-        if first_image:
-            return first_image.image_url
-        return obj.main_image or None
+        return list(
+            obj.variants.filter(is_active=True)
+            .prefetch_related(
+                "badges",
+                "images",
+                "variant_attributes__attribute",
+                "variant_attributes__value",
+            )
+            .order_by("-is_default", "display_order", "price")
+        )
+
+    def _get_default_variant(self, obj):
+        variants = self._get_active_variants(obj)
+
+        if not variants:
+            return None
+
+        default_variant = next(
+            (variant for variant in variants if variant.is_default),
+            None,
+        )
+
+        if default_variant:
+            return default_variant
+
+        return sorted(
+            variants,
+            key=lambda variant: (variant.display_order, variant.price),
+        )[0]
+
+    def get_brand(self, obj):
+        if not obj.brand:
+            return None
+
+        return {
+            "id": str(obj.brand.id),
+            "name": obj.brand.name,
+            "slug": obj.brand.slug,
+            "logo_url": obj.brand.logo_url,
+        }
 
     def get_price(self, obj):
-        variants = obj.variants.filter(is_active=True, stock__gt=0)
-        if variants.exists():
-            return min(variant.price for variant in variants)
-        return None
+        default_variant = self._get_default_variant(obj)
+
+        if not default_variant:
+            return None
+
+        return str(default_variant.price)
 
     def get_old_price(self, obj):
-        variants = obj.variants.filter(is_active=True, stock__gt=0, has_discount=True)
-        if variants.exists():
-            old_prices = [v.old_price for v in variants if v.old_price]
-            if old_prices:
-                return max(old_prices)
-        return None
+        default_variant = self._get_default_variant(obj)
+
+        if not default_variant or not default_variant.has_discount:
+            return None
+
+        return str(default_variant.old_price)
+
+    def get_image_url(self, obj):
+        default_variant = self._get_default_variant(obj)
+
+        if default_variant:
+            variant_images = list(default_variant.images.all())
+
+            variant_main_image = next(
+                (image for image in variant_images if image.is_main),
+                None,
+            )
+            if variant_main_image:
+                return variant_main_image.image_url
+
+            variant_first_image = variant_images[0] if variant_images else None
+            if variant_first_image:
+                return variant_first_image.image_url
+
+        product_images = [
+            image for image in obj.images.all() if image.variant_id is None
+        ]
+
+        product_main_image = next(
+            (image for image in product_images if image.is_main),
+            None,
+        )
+        if product_main_image:
+            return product_main_image.image_url
+
+        product_first_image = product_images[0] if product_images else None
+        if product_first_image:
+            return product_first_image.image_url
+
+        return obj.main_image or None
 
     def get_discount_percentage(self, obj):
-        variants = obj.variants.filter(is_active=True, stock__gt=0, has_discount=True)
-        if variants.exists():
-            discounts = [
-                v.discount_percentage for v in variants if v.discount_percentage
-            ]
-            if discounts:
-                return max(discounts)
+        default_variant = self._get_default_variant(obj)
+
+        if default_variant and default_variant.has_discount:
+            return default_variant.discount_percentage
+
         return None
 
-    def get_in_stock(self, obj):
-        return obj.variants.filter(is_active=True, stock__gt=0).exists()
-
     def get_badges(self, obj):
-        badges_list = []
+        badges_by_name = {}
 
-        badge_objects = obj.badges.filter(is_active=True)
-        for badge in badge_objects:
-            badges_list.append(
-                {
+        for badge in obj.badges.all():
+            if not badge.is_active:
+                continue
+
+            badges_by_name[badge.name] = {
+                "id": badge.id,
+                "name": badge.name,
+                "slug": badge.slug,
+                "label": badge.label,
+                "color": badge.color,
+                "background_color": badge.background_color,
+            }
+
+        default_variant = self._get_default_variant(obj)
+
+        if default_variant:
+            for badge in default_variant.badges.all():
+                if not badge.is_active:
+                    continue
+
+                badges_by_name[badge.name] = {
+                    "id": badge.id,
                     "name": badge.name,
+                    "slug": badge.slug,
                     "label": badge.label,
                     "color": badge.color,
                     "background_color": badge.background_color,
                 }
-            )
 
-        # Bestseller badge
-        if (
-            obj.rating >= 4.5
-            and obj.review_count >= 10
-            and not any(b["name"] == "bestseller" for b in badges_list)
-        ):
-            badges_list.append(
+        if obj.rating >= 4.5 and obj.review_count >= 10:
+            badges_by_name.setdefault(
+                "bestseller",
                 {
+                    "id": None,
                     "name": "bestseller",
+                    "slug": "bestseller",
                     "label": "Bestseller",
                     "color": "#000000",
                     "background_color": "#FFD700",
-                }
+                },
             )
 
-        # New arrival badge (last 30 days)
-        if obj.created_at > timezone.now() - timezone.timedelta(days=30) and not any(
-            b["name"] == "new" for b in badges_list
-        ):
-            badges_list.append(
+        if obj.created_at > timezone.now() - timedelta(days=30):
+            badges_by_name.setdefault(
+                "new",
                 {
+                    "id": None,
                     "name": "new",
+                    "slug": "new",
                     "label": "New",
                     "color": "#FFFFFF",
                     "background_color": "#28A745",
-                }
+                },
             )
 
-        # Discount badge
-        if obj.variants.filter(has_discount=True, is_active=True).exists() and not any(
-            b["name"] == "discount" for b in badges_list
-        ):
-            badges_list.append(
+        variants = self._get_active_variants(obj)
+        discounted_variants = [variant for variant in variants if variant.has_discount]
+
+        if discounted_variants:
+            badges_by_name.setdefault(
+                "discount",
                 {
+                    "id": None,
                     "name": "discount",
+                    "slug": "discount",
                     "label": "Discount",
                     "color": "#FFFFFF",
                     "background_color": "#DC3545",
-                }
+                },
             )
 
-        # Sale badge
-        if obj.variants.filter(has_discount=True, is_active=True).exists():
-            max_discount = 0
-            for variant in obj.variants.filter(has_discount=True, is_active=True):
-                if (
-                    variant.discount_percentage
-                    and variant.discount_percentage > max_discount
-                ):
-                    max_discount = variant.discount_percentage
+            max_discount = max(
+                variant.discount_percentage for variant in discounted_variants
+            )
 
-            if max_discount >= 20 and not any(b["name"] == "sale" for b in badges_list):
-                badges_list.append(
+            if max_discount >= 20:
+                badges_by_name.setdefault(
+                    "sale",
                     {
+                        "id": None,
                         "name": "sale",
+                        "slug": "sale",
                         "label": f"Sale {max_discount}%",
                         "color": "#FFFFFF",
                         "background_color": "#FF6B6B",
-                    }
+                    },
                 )
 
-        # Trending badge
-        if (
-            obj.review_count >= 20
-            and obj.rating >= 4.0
-            and not any(b["name"] == "trending" for b in badges_list)
-        ):
-            badges_list.append(
+        if obj.review_count >= 20 and obj.rating >= 4.0:
+            badges_by_name.setdefault(
+                "trending",
                 {
+                    "id": None,
                     "name": "trending",
+                    "slug": "trending",
                     "label": "Trending",
                     "color": "#FFFFFF",
                     "background_color": "#FD7E14",
-                }
+                },
             )
 
-        return badges_list
+        return list(badges_by_name.values())
 
-    def get_variants_display(self, obj):
-        """Return variant display values for product card (e.g., ['1 l', '35x62'])"""
-        variants = obj.variants.filter(is_active=True, stock__gt=0)
+    def get_available_attributes(self, obj):
+        attributes = {}
 
-        display_values = set()
-        for variant in variants:
-            attrs = variant.attributes.all()
-            for attr in attrs:
-                if attr.attribute.name.lower() in ["size", "volume"]:
-                    display_values.add(attr.value)
+        for variant in self._get_active_variants(obj):
+            for item in variant.variant_attributes.all():
+                attr_name = item.attribute.name
 
-        return list(display_values)[:5]
+                if attr_name not in attributes:
+                    attributes[attr_name] = {
+                        "attribute_id": str(item.attribute.id),
+                        "values": [],
+                    }
+
+                existing_value_ids = {
+                    value_data["id"] for value_data in attributes[attr_name]["values"]
+                }
+
+                value_id = str(item.value.id)
+
+                if value_id not in existing_value_ids:
+                    attributes[attr_name]["values"].append(
+                        {
+                            "id": value_id,
+                            "value": item.value.value,
+                            "slug": item.value.slug,
+                        }
+                    )
+
+        return attributes
+
+    def get_default_variant_id(self, obj):
+        default_variant = self._get_default_variant(obj)
+
+        if not default_variant:
+            return None
+
+        return str(default_variant.id)
+
+    def get_variants(self, obj):
+        variants = self._get_active_variants(obj)
+        return ProductVariantCardSerializer(variants, many=True).data
 
 
 class ProductDetailSerializer(ProductCardSerializer):
-    """Full product details serializer"""
-
-    variants = ProductVariantSerializer(many=True, read_only=True)
-    images = ProductImageSerializer(many=True, read_only=True)
+    variants = serializers.SerializerMethodField()
+    images = serializers.SerializerMethodField()
     reviews = serializers.SerializerMethodField()
-    available_attributes = serializers.SerializerMethodField()
     category = serializers.SerializerMethodField()
     brand = BrandSerializer(read_only=True)
 
@@ -668,8 +842,11 @@ class ProductDetailSerializer(ProductCardSerializer):
             "old_price",
             "discount_percentage",
             "in_stock",
+            "rating",
+            "review_count",
             "badges",
-            "variants_display",
+            "available_attributes",
+            "default_variant_id",
             "category_slug",
             "animal_type_slug",
             "description",
@@ -678,7 +855,6 @@ class ProductDetailSerializer(ProductCardSerializer):
             "variants",
             "images",
             "reviews",
-            "available_attributes",
             "meta_title",
             "meta_description",
             "composition",
@@ -692,7 +868,7 @@ class ProductDetailSerializer(ProductCardSerializer):
 
     def get_category(self, obj):
         return {
-            "id": obj.category.id,
+            "id": str(obj.category.id),
             "name": obj.category.name,
             "slug": obj.category.slug,
             "animal_type": {
@@ -701,6 +877,12 @@ class ProductDetailSerializer(ProductCardSerializer):
             },
         }
 
+    def get_images(self, obj):
+        product_images = [
+            image for image in obj.images.all() if image.variant_id is None
+        ]
+        return ProductImageSerializer(product_images, many=True).data
+
     def get_reviews(self, obj):
         return {
             "rating": float(obj.rating) if obj.rating is not None else 0,
@@ -708,47 +890,12 @@ class ProductDetailSerializer(ProductCardSerializer):
             "reviews": ProductReviewItemSerializer(obj.reviews.all(), many=True).data,
         }
 
-    def get_available_attributes(self, obj):
-        """Get available attributes with their values for product filtering"""
-        attributes = {}
-
-        for variant in obj.variants.filter(is_active=True):
-            for attr_value in variant.attributes.all():
-                attr_name = attr_value.attribute.name
-
-                if attr_name not in attributes:
-                    attributes[attr_name] = {
-                        "attribute_id": attr_value.attribute.id,
-                        "values": [],
-                    }
-
-                existing_values = [
-                    value["value"] for value in attributes[attr_name]["values"]
-                ]
-
-                if attr_value.value not in existing_values:
-                    attributes[attr_name]["values"].append(
-                        {
-                            "id": attr_value.id,
-                            "value": attr_value.value,
-                            "slug": attr_value.slug,
-                        }
-                    )
-
-        return attributes
-
-
-class BrandMinimalSerializer(serializers.ModelSerializer):
-    """Minimal serializer for brand list (used in filters)"""
-
-    class Meta:
-        model = Brand
-        fields = ["id", "name", "slug", "logo_url"]
+    def get_variants(self, obj):
+        variants = self._get_active_variants(obj)
+        return ProductVariantSerializer(variants, many=True).data
 
 
 class ProductFilterSerializer(serializers.Serializer):
-    """Serializer for product filter options"""
-
     min_price = serializers.DecimalField(max_digits=10, decimal_places=2)
     max_price = serializers.DecimalField(max_digits=10, decimal_places=2)
     brands = BrandMinimalSerializer(many=True)

@@ -15,6 +15,7 @@ from shop.models import (
     ProductImage,
     ProductReview,
     ProductVariant,
+    ProductVariantAttribute,
 )
 
 
@@ -428,9 +429,11 @@ class Command(BaseCommand):
                 defaults={
                     "name": brand_data["name"],
                     "logo_url": brand_data.get("logo_url", ""),
+                    "is_active": True,
                 },
             )
             brand_objects[brand.slug] = brand
+
             if created:
                 self.stdout.write(f"✅ Created brand: {brand.name}")
 
@@ -518,11 +521,14 @@ class Command(BaseCommand):
             )
             attribute_objects[attribute.slug] = attribute
 
-            for value in attr_data["values"]:
+            for index, value in enumerate(attr_data["values"]):
                 ProductAttributeValue.objects.get_or_create(
                     attribute=attribute,
                     slug=slugify(value),
-                    defaults={"value": value},
+                    defaults={
+                        "value": value,
+                        "display_order": index,
+                    },
                 )
 
             if created:
@@ -530,7 +536,10 @@ class Command(BaseCommand):
 
         # 5. Create products and variants
         self.create_sample_products(
-            dog_type, cat_type, brand_objects, attribute_objects
+            dog_type,
+            cat_type,
+            brand_objects,
+            attribute_objects,
         )
 
         # 6. Create test users for reviews
@@ -548,15 +557,18 @@ class Command(BaseCommand):
 
         for cat_data in categories_data:
             parent, created = Category.objects.get_or_create(
-                name=cat_data["name"],
                 slug=cat_data["slug"],
                 animal_type=animal_type,
+                parent=None,
                 defaults={
+                    "name": cat_data["name"],
                     "description": cat_data.get("description", ""),
                     "image_url": cat_data.get("image_url", ""),
                     "sort_order": cat_data["sort_order"],
+                    "is_active": True,
                 },
             )
+
             if created:
                 categories_created += 1
                 self.stdout.write(
@@ -566,14 +578,16 @@ class Command(BaseCommand):
             for child_data in cat_data.get("children", []):
                 child, created = Category.objects.get_or_create(
                     parent=parent,
-                    name=child_data["name"],
                     slug=child_data["slug"],
                     animal_type=animal_type,
                     defaults={
+                        "name": child_data["name"],
                         "sort_order": child_data["sort_order"],
                         "image_url": child_data.get("image_url", ""),
+                        "is_active": True,
                     },
                 )
+
                 if created:
                     categories_created += 1
                     self.stdout.write(
@@ -670,7 +684,6 @@ class Command(BaseCommand):
                 "short_description": "High-quality dog food for adult dogs",
                 "category": dog_dry_food,
                 "brand": brands["royal-canin"],
-                "price": 45.99,
                 "images": [
                     "https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=600&h=600&fit=crop",
                     "https://images.unsplash.com/photo-1559056199-641a0ac8b55e?w=600&h=600&fit=crop",
@@ -713,7 +726,6 @@ class Command(BaseCommand):
                 "short_description": "Dental care treats for dogs",
                 "category": dog_treats,
                 "brand": brands["purina"],
-                "price": 12.99,
                 "images": [
                     "https://images.unsplash.com/photo-1541364983171-a8ba01e95cfc?w=600&h=600&fit=crop"
                 ],
@@ -749,7 +761,6 @@ class Command(BaseCommand):
                 "short_description": "Durable rubber ball for dogs",
                 "category": dog_toys,
                 "brand": brands["kong"],
-                "price": 15.99,
                 "images": [
                     "https://images.unsplash.com/photo-1548192746-dd526f154ed9?w=600&h=600&fit=crop"
                 ],
@@ -776,7 +787,7 @@ class Command(BaseCommand):
                         "color": "Green",
                     },
                 ],
-                "attributes": {"Material": "Rubber", "Color": "Multicolor"},
+                "attributes": {"Material": "Rubber"},
             },
             {
                 "name": "Orthopedic Memory Foam Bed",
@@ -785,7 +796,6 @@ class Command(BaseCommand):
                 "short_description": "Orthopedic bed for dogs",
                 "category": dog_beds,
                 "brand": brands["petlux"],
-                "price": 89.99,
                 "images": [
                     "https://images.unsplash.com/photo-1561037404-61cd46aa615b?w=600&h=600&fit=crop"
                 ],
@@ -812,7 +822,7 @@ class Command(BaseCommand):
                         "color": "Black",
                     },
                 ],
-                "attributes": {"Material": "Fabric", "Color": "Multicolor"},
+                "attributes": {"Material": "Fabric"},
             },
         ]
 
@@ -824,7 +834,6 @@ class Command(BaseCommand):
                 "short_description": "Dry food for indoor cats",
                 "category": cat_dry_food,
                 "brand": brands["hills-science-diet"],
-                "price": 38.99,
                 "images": [
                     "https://images.unsplash.com/photo-1608848461950-0fe51dfc41cb?w=600&h=600&fit=crop"
                 ],
@@ -860,7 +869,6 @@ class Command(BaseCommand):
                 "short_description": "Wet food variety pack for cats",
                 "category": cat_wet_food,
                 "brand": brands["acme-pet-supplies"],
-                "price": 24.99,
                 "images": [
                     "https://images.unsplash.com/photo-1576675466969-38eeae4b41f6?w=600&h=600&fit=crop"
                 ],
@@ -893,7 +901,6 @@ class Command(BaseCommand):
                 "short_description": "Interactive wand toy for cats",
                 "category": cat_toys,
                 "brand": brands["petsafe"],
-                "price": 11.99,
                 "images": [
                     "https://images.unsplash.com/photo-1548192746-dd526f154ed9?w=600&h=600&fit=crop"
                 ],
@@ -917,7 +924,7 @@ class Command(BaseCommand):
                         "stock": 60,
                     },
                 ],
-                "attributes": {"Material": "Fabric", "Color": "Multicolor"},
+                "attributes": {"Material": "Fabric"},
             },
             {
                 "name": "Clumping Cat Litter",
@@ -926,7 +933,6 @@ class Command(BaseCommand):
                 "short_description": "Clumping litter with odor control",
                 "category": cat_litter,
                 "brand": brands["vetcare"],
-                "price": 18.99,
                 "images": [
                     "https://images.unsplash.com/photo-1591946614720-90a587da4a36?w=600&h=600&fit=crop"
                 ],
@@ -984,60 +990,114 @@ class Command(BaseCommand):
         if created:
             self.stdout.write(f"✅ Created {animal_type} product: {product.name}")
 
-            for i, image_url in enumerate(product_data.get("images", [])):
-                is_main = i == 0
-                ProductImage.objects.create(
+        product_images = product_data.get("images", [])
+
+        for i, image_url in enumerate(product_images):
+            is_main = i == 0
+
+            image, image_created = ProductImage.objects.get_or_create(
+                product=product,
+                variant=None,
+                image_url=image_url,
+                defaults={
+                    "alt_text": f"{product.name} - Image {i + 1}",
+                    "is_main": is_main,
+                    "display_order": i,
+                },
+            )
+
+            if is_main:
+                product.main_image = image_url
+                product.save(update_fields=["main_image"])
+
+        for index, variant_data in enumerate(product_data["variants"]):
+            weight = variant_data.get("weight")
+            old_price = variant_data.get("old_price")
+            price = Decimal(str(variant_data["price"]))
+
+            if old_price is not None:
+                old_price = Decimal(str(old_price))
+                if old_price <= price:
+                    old_price = None
+
+            variant, variant_created = ProductVariant.objects.get_or_create(
+                sku=variant_data["sku"],
+                defaults={
+                    "product": product,
+                    "price": price,
+                    "old_price": old_price,
+                    "stock": variant_data["stock"],
+                    "is_active": True,
+                    "is_default": index == 0,
+                    "weight": Decimal(str(weight)) if weight is not None else None,
+                },
+            )
+
+            if not variant_created and variant.product_id == product.id:
+                variant.price = price
+                variant.old_price = old_price
+                variant.stock = variant_data["stock"]
+                variant.is_active = True
+                variant.is_default = index == 0
+                variant.weight = Decimal(str(weight)) if weight is not None else None
+                variant.save()
+
+            if "size" in variant_data:
+                self.attach_variant_attribute(variant, "Size", variant_data["size"])
+
+            if "color" in variant_data:
+                self.attach_variant_attribute(variant, "Color", variant_data["color"])
+
+            for attr_name, attr_value in product_data.get("attributes", {}).items():
+                self.attach_variant_attribute(variant, attr_name, attr_value)
+
+            if product_images:
+                variant_image_url = variant_data.get("image_url") or product_images[0]
+
+                ProductImage.objects.get_or_create(
                     product=product,
-                    image_url=image_url,
-                    alt_text=f"{product.name} - Image {i + 1}",
-                    is_main=is_main,
-                    display_order=i,
-                )
-
-                if is_main:
-                    product.main_image = image_url
-                    product.save(update_fields=["main_image"])
-
-            for variant_data in product_data["variants"]:
-                weight = variant_data.get("weight")
-
-                variant, v_created = ProductVariant.objects.get_or_create(
-                    sku=variant_data["sku"],
+                    variant=variant,
+                    image_url=variant_image_url,
                     defaults={
-                        "product": product,
-                        "price": Decimal(str(variant_data["price"])),
-                        "stock": variant_data["stock"],
-                        "is_active": True,
-                        "weight": Decimal(str(weight)) if weight is not None else None,
+                        "alt_text": f"{product.name} - {variant.sku}",
+                        "is_main": True,
+                        "display_order": 0,
                     },
                 )
 
-                if v_created:
-                    if "size" in variant_data:
-                        size_value = ProductAttributeValue.objects.get(
-                            attribute__slug="size",
-                            value=variant_data["size"],
-                        )
-                        variant.attributes.add(size_value)
+            if variant_created:
+                self.stdout.write(f"   ✅ Created variant: {variant.sku}")
+            else:
+                self.stdout.write(f"   ✅ Updated variant: {variant.sku}")
 
-                    if "color" in variant_data:
-                        color_value = ProductAttributeValue.objects.get(
-                            attribute__slug="color",
-                            value=variant_data["color"],
-                        )
-                        variant.attributes.add(color_value)
+    def attach_variant_attribute(self, variant, attribute_name, raw_value):
+        if raw_value is None:
+            return
 
-                    for attr_name, attr_value in product_data.get(
-                        "attributes", {}
-                    ).items():
-                        attr = ProductAttribute.objects.get(name=attr_name)
-                        value_obj = ProductAttributeValue.objects.get(
-                            attribute=attr,
-                            value=attr_value,
-                        )
-                        variant.attributes.add(value_obj)
+        value = str(raw_value).strip()
 
-                    self.stdout.write(f"   ✅ Created variant: {variant.sku}")
+        if not value:
+            return
+
+        attribute, _ = ProductAttribute.objects.get_or_create(
+            slug=slugify(attribute_name),
+            defaults={
+                "name": attribute_name,
+                "filterable": True,
+            },
+        )
+
+        attribute_value, _ = ProductAttributeValue.objects.get_or_create(
+            attribute=attribute,
+            slug=slugify(value),
+            defaults={"value": value},
+        )
+
+        ProductVariantAttribute.objects.update_or_create(
+            variant=variant,
+            attribute=attribute,
+            defaults={"value": attribute_value},
+        )
 
     def create_sample_reviews(self, users=None):
         ProductReview.objects.all().delete()
@@ -1119,7 +1179,6 @@ class Command(BaseCommand):
             "GET /api/products",
             f"GET /api/products/{product_id}",
             f"GET /api/products/{product_id}/related",
-            "GET /api/products/featured",
             "GET /api/products/search/?q=dog",
             "GET /api/brands",
             "GET /api/brands/royal-canin",
@@ -1170,6 +1229,24 @@ class Command(BaseCommand):
         self.stdout.write("           }")
         self.stdout.write("       ]")
         self.stdout.write("   }")
+
+        self.stdout.write("\n💡 Variant structure now looks like:")
+        self.stdout.write('   "variants": [')
+        self.stdout.write("       {")
+        self.stdout.write('           "id": "...",')
+        self.stdout.write('           "sku": "DOG-FOOD-2KG",')
+        self.stdout.write('           "attributes": {')
+        self.stdout.write(
+            '               "Size": {"id": "...", "value": "2kg", "slug": "2kg"},'
+        )
+        self.stdout.write(
+            '               "Flavor": {"id": "...", "value": "Chicken", "slug": "chicken"}'
+        )
+        self.stdout.write("           },")
+        self.stdout.write('           "price": "25.99",')
+        self.stdout.write('           "stock": 50')
+        self.stdout.write("       }")
+        self.stdout.write("   ]")
 
         self.stdout.write("\n💡 Quick test examples:")
         self.stdout.write("   curl http://localhost:8000/api/dashboard")

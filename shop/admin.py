@@ -1,33 +1,32 @@
 from django import forms
 from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin
-from django.db import transaction
 from django.db.models import (
     Count,
-    Q,
-    Sum,
-    F,
     DecimalField,
     ExpressionWrapper,
+    F,
+    Q,
+    Sum,
 )
+from django.forms.models import BaseInlineFormSet
 from django.utils.html import format_html
-import random
-import string
 
 from .models import (
-    Customer,
     AnimalType,
-    Category,
-    Brand,
     Badge,
+    Brand,
+    Cart,
+    CartItem,
+    Category,
+    Customer,
     Product,
     ProductAttribute,
     ProductAttributeValue,
-    ProductVariant,
     ProductImage,
     ProductReview,
-    Cart,
-    CartItem,
+    ProductVariant,
+    ProductVariantAttribute,
 )
 
 
@@ -36,15 +35,42 @@ from .models import (
 # ======================================================
 
 
-def generate_random_sku():
-    prefix = "PROD-"
-    chars = string.ascii_uppercase + string.digits
+def image_preview(image_url, height=60):
+    if image_url:
+        return format_html(
+            '<img src="{}" style="height:{}px; border-radius:6px;" />',
+            image_url,
+            height,
+        )
 
-    while True:
-        suffix = "".join(random.choices(chars, k=8))
-        sku = f"{prefix}{suffix}"
-        if not ProductVariant.objects.filter(sku=sku).exists():
-            return sku
+    return "-"
+
+
+def unset_other_main_images(image):
+    """
+    Keep only one main product image and one main image per variant.
+
+    Product-level main image:
+    product=X, variant=None, is_main=True
+
+    Variant-level main image:
+    product=X, variant=Y, is_main=True
+    """
+    if not image.is_main or not image.product_id:
+        return
+
+    if image.variant_id:
+        ProductImage.objects.filter(
+            product=image.product,
+            variant=image.variant,
+            is_main=True,
+        ).exclude(pk=image.pk).update(is_main=False)
+    else:
+        ProductImage.objects.filter(
+            product=image.product,
+            variant__isnull=True,
+            is_main=True,
+        ).exclude(pk=image.pk).update(is_main=False)
 
 
 # ======================================================
@@ -62,9 +88,10 @@ class CategoryForm(forms.ModelForm):
         parent = cleaned.get("parent")
 
         node = parent
+
         while node:
             if node == self.instance:
-                raise forms.ValidationError("Circular category hierarchy detected")
+                raise forms.ValidationError("Circular category hierarchy detected.")
             node = node.parent
 
         return cleaned
@@ -74,7 +101,81 @@ class ProductVariantForm(forms.ModelForm):
     class Meta:
         model = ProductVariant
         fields = "__all__"
-        widgets = {"attributes": forms.CheckboxSelectMultiple}
+        help_texts = {
+            "sku": (
+                "Optional. Leave empty to auto-generate SKU. "
+                "Fill manually if you have supplier/internal SKU."
+            ),
+            "is_default": (
+                "Default variant is used for product card price/image "
+                "before customer selects another option."
+            ),
+        }
+
+
+# ======================================================
+# INLINE FORMSETS
+# ======================================================
+
+
+class ProductImageInlineFormSet(BaseInlineFormSet):
+    """
+    Inline for images inside Product admin.
+
+    Product is set automatically by Django inline.
+    """
+
+    def save_new(self, form, commit=True):
+        image = super().save_new(form, commit=False)
+        unset_other_main_images(image)
+
+        if commit:
+            image.save()
+            form.save_m2m()
+
+        return image
+
+    def save_existing(self, form, instance, commit=True):
+        image = super().save_existing(form, instance, commit=False)
+        unset_other_main_images(image)
+
+        if commit:
+            image.save()
+            form.save_m2m()
+
+        return image
+
+
+class ProductVariantImageInlineFormSet(BaseInlineFormSet):
+    """
+    Inline for images inside ProductVariant admin.
+
+    ProductImage has both product and variant.
+    When editing image from variant page, product must be copied
+    from current variant automatically.
+    """
+
+    def save_new(self, form, commit=True):
+        image = super().save_new(form, commit=False)
+        image.product = self.instance.product
+        unset_other_main_images(image)
+
+        if commit:
+            image.save()
+            form.save_m2m()
+
+        return image
+
+    def save_existing(self, form, instance, commit=True):
+        image = super().save_existing(form, instance, commit=False)
+        image.product = self.instance.product
+        unset_other_main_images(image)
+
+        if commit:
+            image.save()
+            form.save_m2m()
+
+        return image
 
 
 # ======================================================
@@ -82,8 +183,36 @@ class ProductVariantForm(forms.ModelForm):
 # ======================================================
 
 
+class ProductVariantAttributeInline(admin.TabularInline):
+    """
+    Attribute rows for concrete variant.
+
+    Example:
+    Attribute: Size  -> Value: M
+    Attribute: Color -> Value: Pink
+
+    This replaces the old checkbox-based attributes field.
+    """
+
+    model = ProductVariantAttribute
+    extra = 1
+    autocomplete_fields = ("attribute", "value")
+    fields = ("attribute", "value")
+    ordering = ("attribute__display_order", "value__display_order")
+    show_change_link = True
+
+
 class ProductImagesInline(admin.TabularInline):
+    """
+    Product-level images.
+
+    You may optionally select variant here too.
+    If variant is empty, image is common product image.
+    If variant is selected, image belongs to that variant.
+    """
+
     model = ProductImage
+    formset = ProductImageInlineFormSet
     extra = 1
     autocomplete_fields = ("variant",)
     fields = (
@@ -100,41 +229,98 @@ class ProductImagesInline(admin.TabularInline):
     show_change_link = True
 
     def preview(self, obj):
-        if obj.image_url:
-            return format_html(
-                '<img src="{}" style="max-height:80px; border-radius:6px;" />',
-                obj.image_url,
-            )
-        return "-"
+        return image_preview(obj.image_url, height=80)
+
+    preview.short_description = "Preview"
+
+
+class ProductVariantImagesInline(admin.TabularInline):
+    """
+    Variant-specific images.
+
+    Used on ProductVariant page.
+    Product is set automatically from current variant.
+    """
+
+    model = ProductImage
+    formset = ProductVariantImageInlineFormSet
+    fk_name = "variant"
+    extra = 1
+    fields = (
+        "image_url",
+        "alt_text",
+        "is_main",
+        "display_order",
+        "cloudinary_public_id",
+        "preview",
+    )
+    readonly_fields = ("cloudinary_public_id", "preview")
+    ordering = ("display_order", "id")
+    show_change_link = True
+
+    def preview(self, obj):
+        return image_preview(obj.image_url, height=80)
 
     preview.short_description = "Preview"
 
 
 class ProductVariantsInline(admin.StackedInline):
+    """
+    Product variants shown inside Product admin.
+
+    Django admin does not support nested inlines by default,
+    so attributes are edited by opening the variant change page.
+    """
+
     model = ProductVariant
     form = ProductVariantForm
     extra = 0
     show_change_link = True
-    readonly_fields = ("discount_percentage_display",)
+    autocomplete_fields = ("badges",)
+    readonly_fields = (
+        "has_discount_display",
+        "discount_percentage_display",
+        "created_at",
+        "updated_at",
+    )
 
     fieldsets = (
         (
             "Variant",
             {
                 "fields": (
-                    ("sku", "is_active"),
+                    ("sku", "is_active", "is_default"),
+                    ("display_order", "stock", "weight"),
                     ("price", "old_price", "cost_price"),
-                    ("stock", "weight"),
-                    ("has_discount", "discount_percentage_display"),
-                    "attributes",
+                    ("has_discount_display", "discount_percentage_display"),
+                    "badges",
+                    "short_description",
+                    "description",
                 )
+            },
+        ),
+        (
+            "Service info",
+            {
+                "fields": ("created_at", "updated_at"),
+                "classes": ("collapse",),
             },
         ),
     )
 
-    def discount_percentage_display(self, obj):
+    def has_discount_display(self, obj):
         if not obj.pk:
+            return False
+
+        return obj.has_discount
+
+    has_discount_display.short_description = "Has discount"
+    has_discount_display.boolean = True
+
+    def discount_percentage_display(self, obj):
+        if not obj.pk or not obj.has_discount:
             return "-"
+
         return f"{obj.discount_percentage}%"
 
     discount_percentage_display.short_description = "Discount %"
@@ -171,8 +357,9 @@ class CustomerAdmin(UserAdmin):
 @admin.register(AnimalType)
 class AnimalTypeAdmin(admin.ModelAdmin):
     list_display = ("name", "is_active", "category_count", "product_count")
-    search_fields = ("name",)
+    search_fields = ("name", "slug")
     list_filter = ("is_active",)
+    ordering = ("name",)
 
     def get_queryset(self, request):
         return (
@@ -180,7 +367,8 @@ class AnimalTypeAdmin(admin.ModelAdmin):
             .get_queryset(request)
             .annotate(
                 _category_count=Count(
-                    "categories", filter=Q(categories__is_active=True)
+                    "categories",
+                    filter=Q(categories__is_active=True),
                 ),
                 _product_count=Count(
                     "categories__products",
@@ -221,13 +409,17 @@ class CategoryAdmin(admin.ModelAdmin):
     list_filter = ("is_active", "animal_type")
     search_fields = ("name", "slug", "parent__name", "animal_type__name")
     ordering = ("animal_type__name", "sort_order", "name")
+    autocomplete_fields = ("parent",)
 
     def get_queryset(self, request):
         return (
             super()
             .get_queryset(request)
             .annotate(
-                _product_count=Count("products", filter=Q(products__is_active=True))
+                _product_count=Count(
+                    "products",
+                    filter=Q(products__is_active=True),
+                )
             )
         )
 
@@ -254,7 +446,10 @@ class BrandAdmin(admin.ModelAdmin):
             super()
             .get_queryset(request)
             .annotate(
-                _product_count=Count("products", filter=Q(products__is_active=True))
+                _product_count=Count(
+                    "products",
+                    filter=Q(products__is_active=True),
+                )
             )
         )
 
@@ -264,9 +459,7 @@ class BrandAdmin(admin.ModelAdmin):
     product_count.short_description = "Active products"
 
     def logo(self, obj):
-        if obj.logo_url:
-            return format_html('<img src="{}" style="height:40px" />', obj.logo_url)
-        return "-"
+        return image_preview(obj.logo_url, height=40)
 
     logo.short_description = "Logo"
 
@@ -307,6 +500,7 @@ class ProductAdmin(admin.ModelAdmin):
         "is_active",
         "rating",
         "review_count",
+        "display_price_display",
         "min_price_display",
         "max_price_display",
         "in_stock_display",
@@ -330,6 +524,7 @@ class ProductAdmin(admin.ModelAdmin):
         "updated_at",
         "rating",
         "review_count",
+        "display_price_display",
         "min_price_display",
         "max_price_display",
         "in_stock_display",
@@ -357,7 +552,11 @@ class ProductAdmin(admin.ModelAdmin):
             {
                 "fields": (
                     ("rating", "review_count"),
-                    ("min_price_display", "max_price_display"),
+                    (
+                        "display_price_display",
+                        "min_price_display",
+                        "max_price_display",
+                    ),
                     ("in_stock_display",),
                     "main_image",
                 )
@@ -406,6 +605,11 @@ class ProductAdmin(admin.ModelAdmin):
             .prefetch_related("variants", "badges")
         )
 
+    def display_price_display(self, obj):
+        return obj.display_price
+
+    display_price_display.short_description = "Display price"
+
     def min_price_display(self, obj):
         return obj.min_price
 
@@ -422,18 +626,6 @@ class ProductAdmin(admin.ModelAdmin):
     in_stock_display.short_description = "In stock"
     in_stock_display.boolean = True
 
-    def save_model(self, request, obj, form, change):
-        with transaction.atomic():
-            super().save_model(request, obj, form, change)
-
-            if not obj.variants.select_for_update().exists():
-                ProductVariant.objects.create(
-                    product=obj,
-                    sku=generate_random_sku(),
-                    price=0,
-                    stock=0,
-                )
-
 
 # ======================================================
 # PRODUCT VARIANT
@@ -449,16 +641,24 @@ class ProductVariantAdmin(admin.ModelAdmin):
         "old_price",
         "cost_price",
         "stock",
-        "has_discount",
+        "is_default",
+        "has_discount_display",
         "discount_percentage_display",
         "is_active",
+        "display_order",
     )
-    list_select_related = ("product", "product__brand")
-    list_filter = ("is_active", "has_discount", "product__brand")
-    autocomplete_fields = ("product",)
+    list_select_related = ("product", "product__brand", "product__category")
+    list_filter = ("is_active", "is_default", "product__brand", "product__category")
+    autocomplete_fields = ("product", "badges")
     search_fields = ("sku", "product__name", "product__brand__name")
-    readonly_fields = ("discount_percentage_display", "created_at", "updated_at")
-    ordering = ("product", "price")
+    readonly_fields = (
+        "has_discount_display",
+        "discount_percentage_display",
+        "created_at",
+        "updated_at",
+    )
+    ordering = ("product", "display_order", "price")
+    inlines = (ProductVariantAttributeInline, ProductVariantImagesInline)
 
     fieldsets = (
         (
@@ -466,12 +666,22 @@ class ProductVariantAdmin(admin.ModelAdmin):
             {
                 "fields": (
                     "product",
-                    ("sku", "is_active"),
+                    ("sku", "is_active", "is_default"),
+                    ("display_order", "stock", "weight"),
                     ("price", "old_price", "cost_price"),
-                    ("stock", "weight"),
-                    ("has_discount", "discount_percentage_display"),
-                    "attributes",
+                    ("has_discount_display", "discount_percentage_display"),
+                    "badges",
                 )
+            },
+        ),
+        (
+            "Variant content overrides",
+            {
+                "fields": (
+                    "short_description",
+                    "description",
+                ),
+                "classes": ("collapse",),
             },
         ),
         (
@@ -483,17 +693,59 @@ class ProductVariantAdmin(admin.ModelAdmin):
         ),
     )
 
-    def discount_percentage_display(self, obj):
+    def get_queryset(self, request):
+        return (
+            super()
+            .get_queryset(request)
+            .select_related("product", "product__brand", "product__category")
+            .prefetch_related(
+                "badges",
+                "images",
+                "variant_attributes__attribute",
+                "variant_attributes__value",
+            )
+        )
+
+    def has_discount_display(self, obj):
         if not obj.pk:
+            return False
+
+        return obj.has_discount
+
+    has_discount_display.short_description = "Has discount"
+    has_discount_display.boolean = True
+
+    def discount_percentage_display(self, obj):
+        if not obj.pk or not obj.has_discount:
             return "-"
+
         return f"{obj.discount_percentage}%"
 
     discount_percentage_display.short_description = "Discount %"
 
-    def save_model(self, request, obj, form, change):
-        if not obj.sku:
-            obj.sku = generate_random_sku()
-        super().save_model(request, obj, form, change)
+
+# ======================================================
+# VARIANT ATTRIBUTES
+# ======================================================
+
+
+@admin.register(ProductVariantAttribute)
+class ProductVariantAttributeAdmin(admin.ModelAdmin):
+    list_display = ("variant", "attribute", "value")
+    list_select_related = (
+        "variant",
+        "variant__product",
+        "attribute",
+        "value",
+    )
+    autocomplete_fields = ("variant", "attribute", "value")
+    search_fields = (
+        "variant__sku",
+        "variant__product__name",
+        "attribute__name",
+        "value__value",
+    )
+    ordering = ("variant__product__name", "variant__sku", "attribute__display_order")
 
 
 # ======================================================
@@ -503,15 +755,18 @@ class ProductVariantAdmin(admin.ModelAdmin):
 
 @admin.register(ProductAttribute)
 class ProductAttributeAdmin(admin.ModelAdmin):
-    list_display = ("name", "filterable", "display_order")
+    list_display = ("name", "slug", "filterable", "display_order")
     list_filter = ("filterable",)
     search_fields = ("name", "slug")
     ordering = ("display_order", "name")
+    autocomplete_fields = ("categories",)
+    filter_horizontal = ("categories",)
 
 
 @admin.register(ProductAttributeValue)
 class ProductAttributeValueAdmin(admin.ModelAdmin):
-    list_display = ("attribute", "value", "display_order")
+    list_display = ("attribute", "value", "slug", "display_order")
+    list_select_related = ("attribute",)
     autocomplete_fields = ("attribute",)
     search_fields = ("value", "slug", "attribute__name")
     ordering = ("attribute__name", "display_order", "value")
@@ -532,6 +787,7 @@ class ProductImageAdmin(admin.ModelAdmin):
         "cloudinary_public_id",
         "preview",
     )
+    list_select_related = ("product", "variant")
     list_filter = ("is_main",)
     autocomplete_fields = ("product", "variant")
     search_fields = ("product__name", "variant__sku", "alt_text")
@@ -549,14 +805,13 @@ class ProductImageAdmin(admin.ModelAdmin):
     ordering = ("product", "display_order", "id")
 
     def preview(self, obj):
-        if obj.image_url:
-            return format_html(
-                '<img src="{}" style="height:60px; border-radius:6px;" />',
-                obj.image_url,
-            )
-        return "-"
+        return image_preview(obj.image_url, height=60)
 
     preview.short_description = "Preview"
+
+    def save_model(self, request, obj, form, change):
+        unset_other_main_images(obj)
+        super().save_model(request, obj, form, change)
 
 
 # ======================================================
@@ -612,6 +867,7 @@ class ProductReviewAdmin(admin.ModelAdmin):
     @admin.action(description="Activate selected reviews")
     def activate_reviews(self, request, queryset):
         updated = queryset.update(is_active=True)
+
         self.message_user(
             request,
             f"{updated} review(s) activated.",
@@ -621,6 +877,7 @@ class ProductReviewAdmin(admin.ModelAdmin):
     @admin.action(description="Deactivate selected reviews")
     def deactivate_reviews(self, request, queryset):
         updated = queryset.update(is_active=False)
+
         self.message_user(
             request,
             f"{updated} review(s) deactivated.",
@@ -646,6 +903,7 @@ class CartAdmin(admin.ModelAdmin):
             F("items__variant__price") * F("items__quantity"),
             output_field=DecimalField(max_digits=12, decimal_places=2),
         )
+
         return (
             super()
             .get_queryset(request)
