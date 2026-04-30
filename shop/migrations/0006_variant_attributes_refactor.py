@@ -105,6 +105,7 @@ def noop_reverse(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
+    atomic = False
 
     dependencies = [
         ("shop", "0005_remove_product_show_on_dashboard"),
@@ -275,9 +276,9 @@ class Migration(migrations.Migration):
                 to="shop.productvariant",
             ),
         ),
-        migrations.RunPython(copy_variant_attributes, noop_reverse),
-        migrations.RunPython(set_default_variants, noop_reverse),
-        migrations.RunPython(normalize_main_images, noop_reverse),
+        migrations.RunPython(copy_variant_attributes, noop_reverse, atomic=True),
+        migrations.RunPython(set_default_variants, noop_reverse, atomic=True),
+        migrations.RunPython(normalize_main_images, noop_reverse, atomic=True),
         migrations.RemoveField(
             model_name="productvariant",
             name="attributes",
