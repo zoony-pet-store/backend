@@ -1,3 +1,5 @@
+from decimal import Decimal, ROUND_HALF_UP
+
 from django import forms
 from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin
@@ -98,6 +100,28 @@ class CategoryForm(forms.ModelForm):
 
 
 class ProductVariantForm(forms.ModelForm):
+    """
+    Admin form for ProductVariant.
+
+    Adds non-model discount_percent field:
+    - admin can enter old_price and discount %
+    - price will be calculated automatically
+    - discount_percent is not stored in DB
+    """
+
+    discount_percent = forms.DecimalField(
+        required=False,
+        min_value=Decimal("0.01"),
+        max_value=Decimal("99.99"),
+        decimal_places=2,
+        max_digits=5,
+        label="Discount %",
+        help_text=(
+            "Optional. If filled, Price will be calculated from Old price. "
+            "Example: old price 1000 and discount 20 means price 800."
+        ),
+    )
+
     class Meta:
         model = ProductVariant
         fields = "__all__"
@@ -110,7 +134,118 @@ class ProductVariantForm(forms.ModelForm):
                 "Default variant is used for product card price/image "
                 "before customer selects another option."
             ),
+            "is_active": (
+                "Inactive variants are hidden from API and cannot be selected "
+                "by customers."
+            ),
+            "display_order": (
+                "Controls display order of variants. Lower values appear first."
+            ),
+            "cost_price": (
+                "Internal purchase/cost price. Customers do not see this value."
+            ),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # Allow admin to fill old_price + discount_percent
+        # and let the form calculate price.
+        self.fields["price"].required = False
+
+        instance = self.instance
+
+        if instance and instance.pk and instance.old_price and instance.price:
+            if instance.old_price > instance.price:
+                discount = (
+                    (instance.old_price - instance.price)
+                    / instance.old_price
+                    * Decimal("100")
+                )
+                self.fields["discount_percent"].initial = discount.quantize(
+                    Decimal("0.01")
+                )
+
+    def clean(self):
+        cleaned_data = super().clean()
+
+        price = cleaned_data.get("price")
+        old_price = cleaned_data.get("old_price")
+        discount_percent = cleaned_data.get("discount_percent")
+
+        if discount_percent is not None:
+            if not old_price:
+                raise forms.ValidationError(
+                    {
+                        "discount_percent": (
+                            "Old price is required to calculate discount."
+                        )
+                    }
+                )
+
+            multiplier = (Decimal("100") - discount_percent) / Decimal("100")
+            calculated_price = (old_price * multiplier).quantize(
+                Decimal("0.01"),
+                rounding=ROUND_HALF_UP,
+            )
+
+            cleaned_data["price"] = calculated_price
+            return cleaned_data
+
+        if price is None:
+            raise forms.ValidationError(
+                {"price": "Price is required if discount percent is not provided."}
+            )
+
+        return cleaned_data
+
+
+class ProductVariantAttributeForm(forms.ModelForm):
+    """
+    Admin form for ProductVariantAttribute.
+
+    Filters value queryset by selected attribute for existing/bound forms
+    and validates that selected value belongs to selected attribute.
+    """
+
+    class Meta:
+        model = ProductVariantAttribute
+        fields = "__all__"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        attribute_id = None
+
+        if self.data:
+            attribute_id = self.data.get(self.add_prefix("attribute"))
+
+        if not attribute_id and self.instance and self.instance.pk:
+            attribute_id = self.instance.attribute_id
+
+        if attribute_id:
+            self.fields["value"].queryset = ProductAttributeValue.objects.filter(
+                attribute_id=attribute_id
+            ).order_by("display_order", "value")
+        else:
+            self.fields["value"].queryset = (
+                ProductAttributeValue.objects.select_related("attribute")
+                .all()
+                .order_by("attribute__display_order", "display_order", "value")
+            )
+
+    def clean(self):
+        cleaned_data = super().clean()
+
+        attribute = cleaned_data.get("attribute")
+        value = cleaned_data.get("value")
+
+        if attribute and value and value.attribute_id != attribute.id:
+            raise forms.ValidationError(
+                {"value": "Selected value does not belong to selected attribute."}
+            )
+
+        return cleaned_data
 
 
 # ======================================================
@@ -120,13 +255,36 @@ class ProductVariantForm(forms.ModelForm):
 
 class ProductImageInlineFormSet(BaseInlineFormSet):
     """
-    Inline for images inside Product admin.
+    Inline for product-level images inside Product admin.
 
     Product is set automatically by Django inline.
     """
 
+    def clean(self):
+        super().clean()
+
+        main_count = 0
+
+        for form in self.forms:
+            if not hasattr(form, "cleaned_data"):
+                continue
+
+            cleaned_data = form.cleaned_data
+
+            if cleaned_data.get("DELETE"):
+                continue
+
+            if cleaned_data.get("is_main"):
+                main_count += 1
+
+        if main_count > 1:
+            raise forms.ValidationError(
+                "Only one main product image is allowed for one product."
+            )
+
     def save_new(self, form, commit=True):
         image = super().save_new(form, commit=False)
+        image.variant = None
         unset_other_main_images(image)
 
         if commit:
@@ -137,6 +295,7 @@ class ProductImageInlineFormSet(BaseInlineFormSet):
 
     def save_existing(self, form, instance, commit=True):
         image = super().save_existing(form, instance, commit=False)
+        image.variant = None
         unset_other_main_images(image)
 
         if commit:
@@ -155,9 +314,32 @@ class ProductVariantImageInlineFormSet(BaseInlineFormSet):
     from current variant automatically.
     """
 
+    def clean(self):
+        super().clean()
+
+        main_count = 0
+
+        for form in self.forms:
+            if not hasattr(form, "cleaned_data"):
+                continue
+
+            cleaned_data = form.cleaned_data
+
+            if cleaned_data.get("DELETE"):
+                continue
+
+            if cleaned_data.get("is_main"):
+                main_count += 1
+
+        if main_count > 1:
+            raise forms.ValidationError(
+                "Only one main image is allowed for one product variant."
+            )
+
     def save_new(self, form, commit=True):
         image = super().save_new(form, commit=False)
         image.product = self.instance.product
+        image.variant = self.instance
         unset_other_main_images(image)
 
         if commit:
@@ -169,6 +351,7 @@ class ProductVariantImageInlineFormSet(BaseInlineFormSet):
     def save_existing(self, form, instance, commit=True):
         image = super().save_existing(form, instance, commit=False)
         image.product = self.instance.product
+        image.variant = self.instance
         unset_other_main_images(image)
 
         if commit:
@@ -195,8 +378,14 @@ class ProductVariantAttributeInline(admin.TabularInline):
     """
 
     model = ProductVariantAttribute
+    form = ProductVariantAttributeForm
     extra = 1
-    autocomplete_fields = ("attribute", "value")
+
+    # Important:
+    # Do not put "value" here, otherwise Django autocomplete shows values
+    # from all attributes.
+    autocomplete_fields = ("attribute",)
+
     fields = ("attribute", "value")
     ordering = ("attribute__display_order", "value__display_order")
     show_change_link = True
@@ -204,19 +393,15 @@ class ProductVariantAttributeInline(admin.TabularInline):
 
 class ProductImagesInline(admin.TabularInline):
     """
-    Product-level images.
+    Product-level images only.
 
-    You may optionally select variant here too.
-    If variant is empty, image is common product image.
-    If variant is selected, image belongs to that variant.
+    Variant-specific images are managed inside ProductVariant admin.
     """
 
     model = ProductImage
     formset = ProductImageInlineFormSet
     extra = 1
-    autocomplete_fields = ("variant",)
     fields = (
-        "variant",
         "image_url",
         "alt_text",
         "is_main",
@@ -227,6 +412,11 @@ class ProductImagesInline(admin.TabularInline):
     readonly_fields = ("cloudinary_public_id", "preview")
     ordering = ("display_order", "id")
     show_change_link = True
+    verbose_name = "Product image"
+    verbose_name_plural = "Product images"
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).filter(variant__isnull=True)
 
     def preview(self, obj):
         return image_preview(obj.image_url, height=80)
@@ -257,6 +447,8 @@ class ProductVariantImagesInline(admin.TabularInline):
     readonly_fields = ("cloudinary_public_id", "preview")
     ordering = ("display_order", "id")
     show_change_link = True
+    verbose_name = "Variant image"
+    verbose_name_plural = "Variant images"
 
     def preview(self, obj):
         return image_preview(obj.image_url, height=80)
@@ -269,13 +461,14 @@ class ProductVariantsInline(admin.StackedInline):
     Product variants shown inside Product admin.
 
     Django admin does not support nested inlines by default,
-    so attributes are edited by opening the variant change page.
+    so attributes/images are edited by opening the variant change page.
     """
 
     model = ProductVariant
     form = ProductVariantForm
     extra = 0
     show_change_link = True
+    classes = ("collapse",)
     autocomplete_fields = ("badges",)
     readonly_fields = (
         "has_discount_display",
@@ -291,12 +484,20 @@ class ProductVariantsInline(admin.StackedInline):
                 "fields": (
                     ("sku", "is_active", "is_default"),
                     ("display_order", "stock", "weight"),
-                    ("price", "old_price", "cost_price"),
+                    ("price", "old_price", "discount_percent", "cost_price"),
                     ("has_discount_display", "discount_percentage_display"),
                     "badges",
+                )
+            },
+        ),
+        (
+            "Variant content overrides",
+            {
+                "fields": (
                     "short_description",
                     "description",
-                )
+                ),
+                "classes": ("collapse",),
             },
         ),
         (
@@ -634,6 +835,8 @@ class ProductAdmin(admin.ModelAdmin):
 
 @admin.register(ProductVariant)
 class ProductVariantAdmin(admin.ModelAdmin):
+    form = ProductVariantForm
+
     list_display = (
         "sku",
         "product",
@@ -668,7 +871,7 @@ class ProductVariantAdmin(admin.ModelAdmin):
                     "product",
                     ("sku", "is_active", "is_default"),
                     ("display_order", "stock", "weight"),
-                    ("price", "old_price", "cost_price"),
+                    ("price", "old_price", "discount_percent", "cost_price"),
                     ("has_discount_display", "discount_percentage_display"),
                     "badges",
                 )
@@ -731,6 +934,8 @@ class ProductVariantAdmin(admin.ModelAdmin):
 
 @admin.register(ProductVariantAttribute)
 class ProductVariantAttributeAdmin(admin.ModelAdmin):
+    form = ProductVariantAttributeForm
+
     list_display = ("variant", "attribute", "value")
     list_select_related = (
         "variant",
@@ -738,13 +943,19 @@ class ProductVariantAttributeAdmin(admin.ModelAdmin):
         "attribute",
         "value",
     )
-    autocomplete_fields = ("variant", "attribute", "value")
+
+    # Important:
+    # Do not put "value" here, otherwise autocomplete shows values
+    # from all attributes.
+    autocomplete_fields = ("variant", "attribute")
+
     search_fields = (
         "variant__sku",
         "variant__product__name",
         "attribute__name",
         "value__value",
     )
+    list_filter = ("attribute",)
     ordering = ("variant__product__name", "variant__sku", "attribute__display_order")
 
 
