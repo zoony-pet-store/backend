@@ -21,6 +21,7 @@ schema_view = get_schema_view(
 
 urlpatterns = [
     path("admin", admin.site.urls),
+    path("_nested_admin/", include("nested_admin.urls")),
     path(
         "api/docs",
         schema_view.with_ui("swagger", cache_timeout=0),

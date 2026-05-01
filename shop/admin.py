@@ -1,5 +1,6 @@
 from decimal import Decimal, ROUND_HALF_UP
 
+import nested_admin
 from django import forms
 from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin
@@ -149,8 +150,6 @@ class ProductVariantForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        # Allow admin to fill old_price + discount_percent
-        # and let the form calculate price.
         self.fields["price"].required = False
 
         instance = self.instance
@@ -255,9 +254,10 @@ class ProductVariantAttributeForm(forms.ModelForm):
 
 class ProductImageInlineFormSet(BaseInlineFormSet):
     """
-    Inline for product-level images inside Product admin.
+    Inline for base product images inside Product admin.
 
-    Product is set automatically by Django inline.
+    These images are product-level images only.
+    Variant-specific images are managed inside each ProductVariant inline.
     """
 
     def clean(self):
@@ -310,8 +310,7 @@ class ProductVariantImageInlineFormSet(BaseInlineFormSet):
     Inline for images inside ProductVariant admin.
 
     ProductImage has both product and variant.
-    When editing image from variant page, product must be copied
-    from current variant automatically.
+    When editing image from variant block, product and variant are set automatically.
     """
 
     def clean(self):
@@ -362,19 +361,17 @@ class ProductVariantImageInlineFormSet(BaseInlineFormSet):
 
 
 # ======================================================
-# INLINES
+# NESTED INLINES
 # ======================================================
 
 
-class ProductVariantAttributeInline(admin.TabularInline):
+class ProductVariantAttributeInline(nested_admin.NestedTabularInline):
     """
     Attribute rows for concrete variant.
 
     Example:
     Attribute: Size  -> Value: M
     Attribute: Color -> Value: Pink
-
-    This replaces the old checkbox-based attributes field.
     """
 
     model = ProductVariantAttribute
@@ -389,47 +386,15 @@ class ProductVariantAttributeInline(admin.TabularInline):
     fields = ("attribute", "value")
     ordering = ("attribute__display_order", "value__display_order")
     show_change_link = True
+    verbose_name = "Variant attribute"
+    verbose_name_plural = "Variant attributes"
 
 
-class ProductImagesInline(admin.TabularInline):
-    """
-    Product-level images only.
-
-    Variant-specific images are managed inside ProductVariant admin.
-    """
-
-    model = ProductImage
-    formset = ProductImageInlineFormSet
-    extra = 1
-    fields = (
-        "image_url",
-        "alt_text",
-        "is_main",
-        "display_order",
-        "cloudinary_public_id",
-        "preview",
-    )
-    readonly_fields = ("cloudinary_public_id", "preview")
-    ordering = ("display_order", "id")
-    show_change_link = True
-    verbose_name = "Product image"
-    verbose_name_plural = "Product images"
-
-    def get_queryset(self, request):
-        return super().get_queryset(request).filter(variant__isnull=True)
-
-    def preview(self, obj):
-        return image_preview(obj.image_url, height=80)
-
-    preview.short_description = "Preview"
-
-
-class ProductVariantImagesInline(admin.TabularInline):
+class ProductVariantImagesInline(nested_admin.NestedTabularInline):
     """
     Variant-specific images.
 
-    Used on ProductVariant page.
-    Product is set automatically from current variant.
+    These images are displayed inside each ProductVariant block.
     """
 
     model = ProductImage
@@ -456,12 +421,13 @@ class ProductVariantImagesInline(admin.TabularInline):
     preview.short_description = "Preview"
 
 
-class ProductVariantsInline(admin.StackedInline):
+class ProductVariantsInline(nested_admin.NestedStackedInline):
     """
     Product variants shown inside Product admin.
 
-    Django admin does not support nested inlines by default,
-    so attributes/images are edited by opening the variant change page.
+    Now each variant contains its own:
+    - attributes;
+    - variant images.
     """
 
     model = ProductVariant
@@ -470,6 +436,10 @@ class ProductVariantsInline(admin.StackedInline):
     show_change_link = True
     classes = ("collapse",)
     autocomplete_fields = ("badges",)
+    inlines = (
+        ProductVariantAttributeInline,
+        ProductVariantImagesInline,
+    )
     readonly_fields = (
         "has_discount_display",
         "discount_percentage_display",
@@ -525,6 +495,39 @@ class ProductVariantsInline(admin.StackedInline):
         return f"{obj.discount_percentage}%"
 
     discount_percentage_display.short_description = "Discount %"
+
+
+class ProductImagesInline(nested_admin.NestedTabularInline):
+    """
+    Base product images only.
+
+    Variant-specific images are inside Product variants.
+    """
+
+    model = ProductImage
+    formset = ProductImageInlineFormSet
+    extra = 1
+    fields = (
+        "image_url",
+        "alt_text",
+        "is_main",
+        "display_order",
+        "cloudinary_public_id",
+        "preview",
+    )
+    readonly_fields = ("cloudinary_public_id", "preview")
+    ordering = ("display_order", "id")
+    show_change_link = True
+    verbose_name = "Base product image"
+    verbose_name_plural = "Base product images"
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).filter(variant__isnull=True)
+
+    def preview(self, obj):
+        return image_preview(obj.image_url, height=80)
+
+    preview.short_description = "Preview"
 
 
 class CartItemsInline(admin.TabularInline):
@@ -693,7 +696,7 @@ class BadgeAdmin(admin.ModelAdmin):
 
 
 @admin.register(Product)
-class ProductAdmin(admin.ModelAdmin):
+class ProductAdmin(nested_admin.NestedModelAdmin):
     list_display = (
         "name",
         "brand",
@@ -733,7 +736,10 @@ class ProductAdmin(admin.ModelAdmin):
     date_hierarchy = "created_at"
     save_on_top = True
     ordering = ("-created_at",)
-    inlines = (ProductVariantsInline, ProductImagesInline)
+    inlines = (
+        ProductVariantsInline,
+        ProductImagesInline,
+    )
 
     fieldsets = (
         (
@@ -803,7 +809,15 @@ class ProductAdmin(admin.ModelAdmin):
             super()
             .get_queryset(request)
             .select_related("brand", "category", "category__animal_type")
-            .prefetch_related("variants", "badges")
+            .prefetch_related(
+                "badges",
+                "variants",
+                "variants__badges",
+                "variants__variant_attributes__attribute",
+                "variants__variant_attributes__value",
+                "variants__images",
+                "images",
+            )
         )
 
     def display_price_display(self, obj):
@@ -834,7 +848,7 @@ class ProductAdmin(admin.ModelAdmin):
 
 
 @admin.register(ProductVariant)
-class ProductVariantAdmin(admin.ModelAdmin):
+class ProductVariantAdmin(nested_admin.NestedModelAdmin):
     form = ProductVariantForm
 
     list_display = (
@@ -861,7 +875,10 @@ class ProductVariantAdmin(admin.ModelAdmin):
         "updated_at",
     )
     ordering = ("product", "display_order", "price")
-    inlines = (ProductVariantAttributeInline, ProductVariantImagesInline)
+    inlines = (
+        ProductVariantAttributeInline,
+        ProductVariantImagesInline,
+    )
 
     fieldsets = (
         (
@@ -944,9 +961,6 @@ class ProductVariantAttributeAdmin(admin.ModelAdmin):
         "value",
     )
 
-    # Important:
-    # Do not put "value" here, otherwise autocomplete shows values
-    # from all attributes.
     autocomplete_fields = ("variant", "attribute")
 
     search_fields = (

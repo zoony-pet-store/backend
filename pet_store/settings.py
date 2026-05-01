@@ -42,6 +42,7 @@ CSRF_TRUSTED_ORIGINS = [
 ]
 
 INSTALLED_APPS = [
+    "nested_admin",
     "shop.admin_config.EcommerceAdminConfig",
     "django.contrib.auth",
     "django.contrib.contenttypes",
