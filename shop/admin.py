@@ -377,6 +377,7 @@ class ProductVariantAttributeInline(nested_admin.NestedTabularInline):
     model = ProductVariantAttribute
     form = ProductVariantAttributeForm
     extra = 1
+    inline_classes = ("collapse", "open")
 
     # Important:
     # Do not put "value" here, otherwise Django autocomplete shows values
@@ -401,6 +402,7 @@ class ProductVariantImagesInline(nested_admin.NestedTabularInline):
     formset = ProductVariantImageInlineFormSet
     fk_name = "variant"
     extra = 1
+    inline_classes = ("collapse", "open")
     fields = (
         "image_url",
         "alt_text",
@@ -435,6 +437,7 @@ class ProductVariantsInline(nested_admin.NestedStackedInline):
     extra = 0
     show_change_link = True
     classes = ("collapse",)
+    inline_classes = ("collapse", "open")
     autocomplete_fields = ("badges",)
     inlines = (
         ProductVariantAttributeInline,
@@ -507,6 +510,7 @@ class ProductImagesInline(nested_admin.NestedTabularInline):
     model = ProductImage
     formset = ProductImageInlineFormSet
     extra = 1
+    inline_classes = ("collapse", "open")
     fields = (
         "image_url",
         "alt_text",
@@ -960,9 +964,7 @@ class ProductVariantAttributeAdmin(admin.ModelAdmin):
         "attribute",
         "value",
     )
-
     autocomplete_fields = ("variant", "attribute")
-
     search_fields = (
         "variant__sku",
         "variant__product__name",
