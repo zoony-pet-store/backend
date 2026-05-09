@@ -774,7 +774,17 @@ class ProductAdmin(nested_admin.NestedModelAdmin):
             },
         ),
         (
-            "Content",
+            "Dynamic content blocks",
+            {
+                "fields": ("content_blocks",),
+                "description": (
+                    "Preferred new way to manage product page content. "
+                    "Use blocks: text, key/value, table."
+                ),
+            },
+        ),
+        (
+            "Legacy content",
             {
                 "fields": (
                     "composition",
@@ -783,6 +793,9 @@ class ProductAdmin(nested_admin.NestedModelAdmin):
                     "feeding_guidelines",
                 ),
                 "classes": ("collapse",),
+                "description": (
+                    "Legacy fields. Prefer Dynamic content blocks for new products."
+                ),
             },
         ),
         (
