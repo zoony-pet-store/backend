@@ -829,6 +829,7 @@ class ProductDetailSerializer(ProductCardSerializer):
     images = serializers.SerializerMethodField()
     reviews = serializers.SerializerMethodField()
     category = serializers.SerializerMethodField()
+    content_blocks = serializers.SerializerMethodField()
     brand = BrandSerializer(read_only=True)
 
     class Meta:
@@ -855,6 +856,7 @@ class ProductDetailSerializer(ProductCardSerializer):
             "variants",
             "images",
             "reviews",
+            "content_blocks",
             "meta_title",
             "meta_description",
             "composition",
@@ -893,6 +895,134 @@ class ProductDetailSerializer(ProductCardSerializer):
     def get_variants(self, obj):
         variants = self._get_active_variants(obj)
         return ProductVariantSerializer(variants, many=True).data
+
+    def get_content_blocks(self, obj):
+        if obj.content_blocks:
+            return obj.content_blocks
+
+        return self._build_legacy_content_blocks(obj)
+
+    def _build_legacy_content_blocks(self, obj):
+        blocks = []
+
+        if obj.description:
+            blocks.append(
+                {
+                    "type": "text",
+                    "title": "Description",
+                    "content": {
+                        "text": obj.description,
+                    },
+                }
+            )
+
+        if obj.composition:
+            blocks.append(
+                {
+                    "type": "text",
+                    "title": "Composition",
+                    "content": {
+                        "text": obj.composition,
+                    },
+                }
+            )
+
+        if obj.ingredients:
+            blocks.append(
+                {
+                    "type": "text",
+                    "title": "Ingredients",
+                    "content": {
+                        "text": obj.ingredients,
+                    },
+                }
+            )
+
+        if obj.nutritional_analysis:
+            blocks.append(
+                {
+                    "type": "text",
+                    "title": "Typical analysis",
+                    "content": {
+                        "text": obj.nutritional_analysis,
+                    },
+                }
+            )
+
+        if obj.feeding_guidelines:
+            blocks.append(
+                {
+                    "type": "text",
+                    "title": "Feeding guidelines",
+                    "content": {
+                        "text": obj.feeding_guidelines,
+                    },
+                }
+            )
+
+        if obj.nutritional_value:
+            items = [
+                {
+                    "key": str(key),
+                    "value": str(value),
+                }
+                for key, value in obj.nutritional_value.items()
+            ]
+
+            if items:
+                blocks.append(
+                    {
+                        "type": "key_value",
+                        "title": "Nutritional value",
+                        "content": {
+                            "items": items,
+                        },
+                    }
+                )
+
+        if obj.feeding_table:
+            feeding_table_block = self._build_feeding_table_block(obj.feeding_table)
+
+            if feeding_table_block:
+                blocks.append(feeding_table_block)
+
+        return blocks
+
+    def _build_feeding_table_block(self, feeding_table):
+        if not isinstance(feeding_table, dict):
+            return None
+
+        columns = feeding_table.get("columns")
+        rows = feeding_table.get("rows")
+
+        if isinstance(columns, list) and isinstance(rows, list):
+            return {
+                "type": "table",
+                "title": "Feeding table",
+                "content": {
+                    "columns": columns,
+                    "rows": rows,
+                },
+            }
+
+        items = [
+            {
+                "key": str(key),
+                "value": str(value),
+            }
+            for key, value in feeding_table.items()
+        ]
+
+        if not items:
+            return None
+
+        return {
+            "type": "key_value",
+            "title": "Feeding table",
+            "content": {
+                "items": items,
+            },
+        }
 
 
 class ProductFilterSerializer(serializers.Serializer):

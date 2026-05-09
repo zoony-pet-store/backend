@@ -5,6 +5,7 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import Max, Min, Q
 from django.utils.text import slugify
+from django_jsonform.models.fields import JSONField as JSONFormField
 from phonenumber_field.modelfields import PhoneNumberField
 
 
@@ -227,6 +228,259 @@ class Badge(models.Model):
         return self.label
 
 
+PRODUCT_CONTENT_BLOCK_TYPES = {"text", "key_value", "table"}
+
+
+PRODUCT_CONTENT_BLOCKS_SCHEMA = {
+    "type": "array",
+    "title": "Content blocks",
+    "items": {
+        "type": "dict",
+        "keys": {
+            "type": {
+                "type": "string",
+                "title": "Block type",
+                "choices": [
+                    {"title": "Text", "value": "text"},
+                    {"title": "Key / Value", "value": "key_value"},
+                    {"title": "Table", "value": "table"},
+                ],
+            },
+            "title": {
+                "type": "string",
+                "title": "Title",
+            },
+            "content": {
+                "type": "dict",
+                "title": "Content",
+                "keys": {
+                    "text": {
+                        "type": "string",
+                        "title": "Text",
+                        "widget": "textarea",
+                    },
+                    "items": {
+                        "type": "array",
+                        "title": "Key / Value items",
+                        "items": {
+                            "type": "dict",
+                            "keys": {
+                                "key": {
+                                    "type": "string",
+                                    "title": "Key",
+                                },
+                                "value": {
+                                    "type": "string",
+                                    "title": "Value",
+                                },
+                            },
+                        },
+                    },
+                    "columns": {
+                        "type": "array",
+                        "title": "Table columns",
+                        "items": {
+                            "type": "dict",
+                            "keys": {
+                                "id": {
+                                    "type": "string",
+                                    "title": "Column ID",
+                                },
+                                "title": {
+                                    "type": "string",
+                                    "title": "Column title",
+                                },
+                            },
+                        },
+                    },
+                    "rows": {
+                        "type": "array",
+                        "title": "Table rows",
+                        "items": {
+                            "type": "dict",
+                            "additionalProperties": True,
+                            "keys": {},
+                        },
+                    },
+                },
+            },
+        },
+    },
+}
+
+
+def validate_product_content_blocks(value):
+    if value in (None, ""):
+        return
+
+    if not isinstance(value, list):
+        raise ValidationError({"content_blocks": "Content blocks must be a list."})
+
+    for index, block in enumerate(value, start=1):
+        if not isinstance(block, dict):
+            raise ValidationError(
+                {"content_blocks": f"Block #{index} must be an object."}
+            )
+
+        block_type = block.get("type")
+        title = block.get("title")
+        content = block.get("content")
+
+        if block_type not in PRODUCT_CONTENT_BLOCK_TYPES:
+            raise ValidationError(
+                {
+                    "content_blocks": (
+                        f"Block #{index} has invalid type: {block_type}. "
+                        f"Allowed types: {', '.join(sorted(PRODUCT_CONTENT_BLOCK_TYPES))}."
+                    )
+                }
+            )
+
+        if not title:
+            raise ValidationError(
+                {"content_blocks": f"Block #{index} must have a title."}
+            )
+
+        if not isinstance(content, dict):
+            raise ValidationError(
+                {"content_blocks": f"Block #{index} content must be an object."}
+            )
+
+        if block_type == "text":
+            text = content.get("text")
+
+            if not isinstance(text, str) or not text.strip():
+                raise ValidationError(
+                    {
+                        "content_blocks": (
+                            f"Text block #{index} must have non-empty content.text."
+                        )
+                    }
+                )
+
+        elif block_type == "key_value":
+            items = content.get("items")
+
+            if not isinstance(items, list) or not items:
+                raise ValidationError(
+                    {
+                        "content_blocks": (
+                            f"Key/value block #{index} must have non-empty content.items."
+                        )
+                    }
+                )
+
+            for item_position, item in enumerate(items, start=1):
+                if not isinstance(item, dict):
+                    raise ValidationError(
+                        {
+                            "content_blocks": (
+                                f"Item #{item_position} in block #{index} "
+                                f"must be an object."
+                            )
+                        }
+                    )
+
+                if not item.get("key") or not item.get("value"):
+                    raise ValidationError(
+                        {
+                            "content_blocks": (
+                                f"Item #{item_position} in block #{index} "
+                                f"must have key and value."
+                            )
+                        }
+                    )
+
+        elif block_type == "table":
+            columns = content.get("columns")
+            rows = content.get("rows")
+
+            if not isinstance(columns, list) or not columns:
+                raise ValidationError(
+                    {
+                        "content_blocks": (
+                            f"Table block #{index} must have non-empty content.columns."
+                        )
+                    }
+                )
+
+            if not isinstance(rows, list):
+                raise ValidationError(
+                    {
+                        "content_blocks": (
+                            f"Table block #{index} must have content.rows list."
+                        )
+                    }
+                )
+
+            column_ids = []
+
+            for column_position, column in enumerate(columns, start=1):
+                if not isinstance(column, dict):
+                    raise ValidationError(
+                        {
+                            "content_blocks": (
+                                f"Column #{column_position} in block #{index} "
+                                f"must be an object."
+                            )
+                        }
+                    )
+
+                column_id = column.get("id")
+                column_title = column.get("title")
+
+                if not column_id or not column_title:
+                    raise ValidationError(
+                        {
+                            "content_blocks": (
+                                f"Column #{column_position} in block #{index} "
+                                f"must have id and title."
+                            )
+                        }
+                    )
+
+                column_ids.append(column_id)
+
+            duplicated_column_ids = {
+                column_id for column_id in column_ids if column_ids.count(column_id) > 1
+            }
+
+            if duplicated_column_ids:
+                raise ValidationError(
+                    {
+                        "content_blocks": (
+                            f"Table block #{index} has duplicated column ids: "
+                            f"{', '.join(sorted(duplicated_column_ids))}."
+                        )
+                    }
+                )
+
+            allowed_column_ids = set(column_ids)
+
+            for row_position, row in enumerate(rows, start=1):
+                if not isinstance(row, dict):
+                    raise ValidationError(
+                        {
+                            "content_blocks": (
+                                f"Row #{row_position} in block #{index} "
+                                f"must be an object."
+                            )
+                        }
+                    )
+
+                unknown_keys = set(row.keys()) - allowed_column_ids
+
+                if unknown_keys:
+                    raise ValidationError(
+                        {
+                            "content_blocks": (
+                                f"Row #{row_position} in block #{index} "
+                                f"has unknown keys: {', '.join(sorted(unknown_keys))}."
+                            )
+                        }
+                    )
+
+
 class Product(models.Model):
     """
     Base product.
@@ -281,6 +535,16 @@ class Product(models.Model):
         blank=True,
         verbose_name="Feeding table (JSON)",
     )
+    content_blocks = JSONFormField(
+        schema=PRODUCT_CONTENT_BLOCKS_SCHEMA,
+        default=list,
+        blank=True,
+        verbose_name="Content blocks",
+        help_text=(
+            "Dynamic product page blocks for frontend. "
+            "Supported types: text, key_value, table."
+        ),
+    )
 
     # Keep for backward compatibility / fallback image.
     main_image = models.URLField(max_length=500, blank=True)
@@ -297,10 +561,14 @@ class Product(models.Model):
             )
         ]
 
+    def clean(self):
+        validate_product_content_blocks(self.content_blocks)
+
     def save(self, *args, **kwargs):
         if not self.slug:
             self.slug = self.generate_slug()
 
+        self.full_clean()
         super().save(*args, **kwargs)
 
     def generate_slug(self):
