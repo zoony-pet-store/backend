@@ -86,9 +86,8 @@ def get_active_variant_queryset():
     """
     Shared optimized queryset for active product variants.
 
-    Important:
-    We no longer use prefetch_related("attributes"),
-    because attributes now live through ProductVariantAttribute.
+    Variant options such as size, weight, color or package size
+    are loaded through ProductVariantAttribute.
     """
     return (
         ProductVariant.objects.filter(is_active=True)
@@ -98,7 +97,7 @@ def get_active_variant_queryset():
             "variant_attributes__attribute",
             "variant_attributes__value",
         )
-        .order_by("-is_default", "display_order", "price")
+        .order_by("-is_default", "price", "id")
     )
 
 
@@ -129,8 +128,19 @@ def get_product_base_queryset():
 def get_product_detail_queryset():
     """
     Shared optimized queryset for product detail response.
+
+    Includes:
+    - product card data;
+    - product images;
+    - active variants;
+    - variant attributes/images;
+    - reviews;
+    - structured product content sections.
     """
     return get_product_base_queryset().prefetch_related(
+        "characteristics",
+        "typical_analysis_items",
+        "feeding_guideline_rows",
         Prefetch(
             "reviews",
             queryset=(
@@ -138,7 +148,7 @@ def get_product_detail_queryset():
                 .select_related("user")
                 .order_by("-created_at")
             ),
-        )
+        ),
     )
 
 
@@ -414,7 +424,8 @@ class ProductDetailView(generics.RetrieveAPIView):
     - full variants;
     - variant attributes;
     - variant images;
-    - reviews.
+    - reviews;
+    - structured content blocks.
     """
 
     permission_classes = [permissions.AllowAny]
@@ -638,7 +649,7 @@ class ProductImageUploadView(APIView):
                 type=openapi.TYPE_STRING,
                 required=False,
                 description=(
-                    "Variant UUID. Optional. " "If provided, image belongs to variant."
+                    "Variant UUID. Optional. If provided, image belongs to variant."
                 ),
             ),
             openapi.Parameter(

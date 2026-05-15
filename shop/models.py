@@ -233,7 +233,7 @@ PRODUCT_CONTENT_BLOCK_TYPES = {"text", "key_value", "table"}
 
 PRODUCT_CONTENT_BLOCKS_SCHEMA = {
     "type": "array",
-    "title": "Content blocks",
+    "title": "Advanced custom content blocks",
     "items": {
         "type": "dict",
         "keys": {
@@ -485,10 +485,9 @@ class Product(models.Model):
     """
     Base product.
 
-    Important:
     Product does not store stock.
     Real stock and real price live on ProductVariant.
-    Product-level price for frontend should be calculated from default_variant.
+    Dynamic product-page data is exposed through content_blocks in API.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -520,29 +519,15 @@ class Product(models.Model):
     meta_title = models.CharField(max_length=255, blank=True)
     meta_description = models.TextField(blank=True)
 
-    composition = models.TextField(blank=True, verbose_name="Product composition")
-    nutritional_analysis = models.TextField(blank=True, verbose_name="Typical analysis")
-    feeding_guidelines = models.TextField(blank=True, verbose_name="Feeding guidelines")
-    ingredients = models.TextField(blank=True, verbose_name="Ingredients")
-
-    nutritional_value = models.JSONField(
-        default=dict,
-        blank=True,
-        verbose_name="Nutritional value (JSON)",
-    )
-    feeding_table = models.JSONField(
-        default=dict,
-        blank=True,
-        verbose_name="Feeding table (JSON)",
-    )
     content_blocks = JSONFormField(
         schema=PRODUCT_CONTENT_BLOCKS_SCHEMA,
         default=list,
         blank=True,
-        verbose_name="Content blocks",
+        verbose_name="Advanced custom content blocks",
         help_text=(
-            "Dynamic product page blocks for frontend. "
-            "Supported types: text, key_value, table."
+            "Optional advanced blocks for non-standard product page content. "
+            "Common sections such as Characteristics, Typical analysis and "
+            "Feeding guidelines should be filled in their dedicated admin tables."
         ),
     )
 
@@ -599,11 +584,11 @@ class Product(models.Model):
 
         Priority:
         1. active variant with is_default=True
-        2. first active variant by display_order and price
+        2. first active variant by price/id
         """
         return (
             self.variants.filter(is_active=True)
-            .order_by("-is_default", "display_order", "price")
+            .order_by("-is_default", "price", "id")
             .first()
         )
 
@@ -639,6 +624,91 @@ class Product(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class ProductCharacteristic(models.Model):
+    """
+    Product characteristics section.
+
+    Rendered in API as:
+    type=key_value
+    title=Characteristics
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name="characteristics",
+    )
+    label = models.CharField(max_length=255)
+    value = models.CharField(max_length=500)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]
+        verbose_name = "Product characteristic"
+        verbose_name_plural = "Product characteristics"
+
+    def __str__(self):
+        return f"{self.label}: {self.value}"
+
+
+class ProductTypicalAnalysisItem(models.Model):
+    """
+    Typical analysis section.
+
+    Rendered in API as:
+    type=key_value
+    title=Typical Analysis
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name="typical_analysis_items",
+    )
+    label = models.CharField(max_length=255)
+    value = models.CharField(max_length=500)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]
+        verbose_name = "Typical analysis item"
+        verbose_name_plural = "Typical analysis items"
+
+    def __str__(self):
+        return f"{self.label}: {self.value}"
+
+
+class ProductFeedingGuidelineRow(models.Model):
+    """
+    Feeding guidelines section.
+
+    Rendered in API as table:
+    Pet weight | Active lifestyle | Sedentary lifestyle | Overweight
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name="feeding_guideline_rows",
+    )
+    pet_weight = models.CharField(max_length=100)
+    active_lifestyle = models.CharField(max_length=100, blank=True)
+    sedentary_lifestyle = models.CharField(max_length=100, blank=True)
+    overweight = models.CharField(max_length=100, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]
+        verbose_name = "Feeding guideline row"
+        verbose_name_plural = "Feeding guideline rows"
+
+    def __str__(self):
+        return self.pet_weight
 
 
 class ProductAttribute(models.Model):
@@ -741,6 +811,9 @@ class ProductVariant(models.Model):
 
     This is what user adds to cart.
     Price, old_price and stock belong here, not on Product.
+
+    Variant options such as weight, size, color or package size
+    should be stored through ProductVariantAttribute, not hardcoded fields.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -770,26 +843,18 @@ class ProductVariant(models.Model):
     stock = models.PositiveIntegerField(default=0)
     is_active = models.BooleanField(default=True)
 
-    weight = models.DecimalField(
-        max_digits=8,
-        decimal_places=3,
-        null=True,
-        blank=True,
-    )
-
     # Optional overrides for selected variant.
     description = models.TextField(blank=True)
     short_description = models.TextField(blank=True)
     badges = models.ManyToManyField(Badge, blank=True, related_name="variants")
 
     is_default = models.BooleanField(default=False)
-    display_order = models.PositiveIntegerField(default=0)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ["display_order", "price"]
+        ordering = ["-is_default", "price", "id"]
         indexes = [
             models.Index(fields=["product", "is_active"]),
             models.Index(fields=["product", "is_default"]),

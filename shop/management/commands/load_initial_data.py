@@ -12,8 +12,11 @@ from shop.models import (
     Product,
     ProductAttribute,
     ProductAttributeValue,
+    ProductCharacteristic,
+    ProductFeedingGuidelineRow,
     ProductImage,
     ProductReview,
+    ProductTypicalAnalysisItem,
     ProductVariant,
     ProductVariantAttribute,
 )
@@ -36,7 +39,6 @@ class Command(BaseCommand):
 
         self.stdout.write("🚀 Starting to load initial data...")
 
-        # 1. Create animal types
         dog_type, dog_created = AnimalType.objects.get_or_create(
             name="Dogs",
             slug="dogs",
@@ -53,7 +55,6 @@ class Command(BaseCommand):
         else:
             self.stdout.write("✅ Animal types already exist")
 
-        # 2. Create categories
         dog_categories = [
             {
                 "name": "Food",
@@ -378,7 +379,6 @@ class Command(BaseCommand):
         self.stdout.write(f"✅ Created {dog_count} dog categories")
         self.stdout.write(f"✅ Created {cat_count} cat categories")
 
-        # 3. Create brands
         brands = [
             {
                 "name": "Acme Pet Supplies",
@@ -437,7 +437,6 @@ class Command(BaseCommand):
             if created:
                 self.stdout.write(f"✅ Created brand: {brand.name}")
 
-        # 4. Create product attributes
         attributes = [
             {
                 "name": "Size",
@@ -524,9 +523,8 @@ class Command(BaseCommand):
             for index, value in enumerate(attr_data["values"]):
                 ProductAttributeValue.objects.get_or_create(
                     attribute=attribute,
-                    slug=slugify(value),
+                    value=value,
                     defaults={
-                        "value": value,
                         "display_order": index,
                     },
                 )
@@ -534,7 +532,6 @@ class Command(BaseCommand):
             if created:
                 self.stdout.write(f"✅ Created attribute: {attribute.name}")
 
-        # 5. Create products and variants
         self.create_sample_products(
             dog_type,
             cat_type,
@@ -542,13 +539,9 @@ class Command(BaseCommand):
             attribute_objects,
         )
 
-        # 6. Create test users for reviews
         review_users = self.create_test_users()
-
-        # 7. Create sample reviews and sync product stats
         self.create_sample_reviews(review_users)
 
-        # 8. Print summaries for verification
         self.print_review_summary()
         self.print_testing_info()
 
@@ -692,32 +685,56 @@ class Command(BaseCommand):
                     {
                         "sku": "DOG-FOOD-2KG",
                         "size": "2kg",
-                        "weight": 2.0,
                         "price": 25.99,
                         "stock": 50,
                     },
                     {
                         "sku": "DOG-FOOD-5KG",
                         "size": "5kg",
-                        "weight": 5.0,
                         "price": 45.99,
                         "stock": 30,
                     },
                     {
                         "sku": "DOG-FOOD-10KG",
                         "size": "10kg",
-                        "weight": 10.0,
                         "price": 79.99,
                         "stock": 20,
                     },
                 ],
                 "attributes": {"Flavor": "Chicken", "Age": "Adult"},
-                "nutritional_value": {
-                    "protein": "25%",
-                    "fat": "15%",
-                    "fiber": "4%",
-                    "moisture": "10%",
-                },
+                "characteristics": [
+                    {"label": "Animal", "value": "Dogs"},
+                    {"label": "Brand", "value": "Royal Canin"},
+                    {"label": "Product group", "value": "Dry food"},
+                    {"label": "Age", "value": "Adult"},
+                    {"label": "Flavor", "value": "Chicken"},
+                ],
+                "typical_analysis": [
+                    {"label": "Protein", "value": "25%"},
+                    {"label": "Fat", "value": "15%"},
+                    {"label": "Fiber", "value": "4%"},
+                    {"label": "Moisture", "value": "10%"},
+                ],
+                "feeding_guidelines": [
+                    {
+                        "pet_weight": "2 kg",
+                        "active_lifestyle": "55 g",
+                        "sedentary_lifestyle": "45 g",
+                        "overweight": "40 g",
+                    },
+                    {
+                        "pet_weight": "5 kg",
+                        "active_lifestyle": "110 g",
+                        "sedentary_lifestyle": "90 g",
+                        "overweight": "80 g",
+                    },
+                    {
+                        "pet_weight": "10 kg",
+                        "active_lifestyle": "185 g",
+                        "sedentary_lifestyle": "150 g",
+                        "overweight": "135 g",
+                    },
+                ],
             },
             {
                 "name": "Dental Chew Treats",
@@ -733,26 +750,35 @@ class Command(BaseCommand):
                     {
                         "sku": "TREATS-SMALL",
                         "size": "Small",
-                        "weight": 0.5,
                         "price": 8.99,
                         "stock": 100,
                     },
                     {
                         "sku": "TREATS-MEDIUM",
                         "size": "Medium",
-                        "weight": 1.0,
                         "price": 12.99,
                         "stock": 80,
                     },
                     {
                         "sku": "TREATS-LARGE",
                         "size": "Large",
-                        "weight": 2.0,
                         "price": 18.99,
                         "stock": 60,
                     },
                 ],
                 "attributes": {"Flavor": "Beef", "Age": "Adult"},
+                "characteristics": [
+                    {"label": "Animal", "value": "Dogs"},
+                    {"label": "Brand", "value": "Purina"},
+                    {"label": "Product group", "value": "Treats"},
+                    {"label": "Purpose", "value": "Dental care"},
+                    {"label": "Flavor", "value": "Beef"},
+                ],
+                "typical_analysis": [
+                    {"label": "Protein", "value": "18%"},
+                    {"label": "Fat", "value": "6%"},
+                    {"label": "Fiber", "value": "3%"},
+                ],
             },
             {
                 "name": "Interactive Rubber Ball",
@@ -788,6 +814,12 @@ class Command(BaseCommand):
                     },
                 ],
                 "attributes": {"Material": "Rubber"},
+                "characteristics": [
+                    {"label": "Animal", "value": "Dogs"},
+                    {"label": "Brand", "value": "Kong"},
+                    {"label": "Product group", "value": "Toys"},
+                    {"label": "Material", "value": "Rubber"},
+                ],
             },
             {
                 "name": "Orthopedic Memory Foam Bed",
@@ -823,6 +855,12 @@ class Command(BaseCommand):
                     },
                 ],
                 "attributes": {"Material": "Fabric"},
+                "characteristics": [
+                    {"label": "Animal", "value": "Dogs"},
+                    {"label": "Brand", "value": "PetLux"},
+                    {"label": "Product group", "value": "Beds"},
+                    {"label": "Material", "value": "Fabric"},
+                ],
             },
         ]
 
@@ -841,26 +879,56 @@ class Command(BaseCommand):
                     {
                         "sku": "CAT-FOOD-1.5KG",
                         "size": "1.5kg",
-                        "weight": 1.5,
                         "price": 22.99,
                         "stock": 40,
                     },
                     {
                         "sku": "CAT-FOOD-3KG",
                         "size": "3kg",
-                        "weight": 3.0,
                         "price": 38.99,
                         "stock": 25,
                     },
                     {
                         "sku": "CAT-FOOD-7KG",
                         "size": "7kg",
-                        "weight": 7.0,
                         "price": 65.99,
                         "stock": 15,
                     },
                 ],
                 "attributes": {"Flavor": "Salmon", "Age": "Adult"},
+                "characteristics": [
+                    {"label": "Animal", "value": "Cats"},
+                    {"label": "Brand", "value": "Hill's Science Diet"},
+                    {"label": "Product group", "value": "Dry food"},
+                    {"label": "Age", "value": "Adult"},
+                    {"label": "Flavor", "value": "Salmon"},
+                ],
+                "typical_analysis": [
+                    {"label": "Protein", "value": "27%"},
+                    {"label": "Fat", "value": "13%"},
+                    {"label": "Fiber", "value": "5%"},
+                    {"label": "Moisture", "value": "9%"},
+                ],
+                "feeding_guidelines": [
+                    {
+                        "pet_weight": "2 kg",
+                        "active_lifestyle": "45 g",
+                        "sedentary_lifestyle": "38 g",
+                        "overweight": "34 g",
+                    },
+                    {
+                        "pet_weight": "4 kg",
+                        "active_lifestyle": "75 g",
+                        "sedentary_lifestyle": "64 g",
+                        "overweight": "58 g",
+                    },
+                    {
+                        "pet_weight": "6 kg",
+                        "active_lifestyle": "100 g",
+                        "sedentary_lifestyle": "85 g",
+                        "overweight": "77 g",
+                    },
+                ],
             },
             {
                 "name": "Gourmet Wet Food Variety Pack",
@@ -893,6 +961,17 @@ class Command(BaseCommand):
                     },
                 ],
                 "attributes": {"Flavor": "Assorted", "Age": "All Life Stages"},
+                "characteristics": [
+                    {"label": "Animal", "value": "Cats"},
+                    {"label": "Brand", "value": "Acme Pet Supplies"},
+                    {"label": "Product group", "value": "Wet food"},
+                    {"label": "Flavor", "value": "Assorted"},
+                ],
+                "typical_analysis": [
+                    {"label": "Protein", "value": "10%"},
+                    {"label": "Fat", "value": "5%"},
+                    {"label": "Moisture", "value": "78%"},
+                ],
             },
             {
                 "name": "Feather Teaser Wand",
@@ -925,6 +1004,12 @@ class Command(BaseCommand):
                     },
                 ],
                 "attributes": {"Material": "Fabric"},
+                "characteristics": [
+                    {"label": "Animal", "value": "Cats"},
+                    {"label": "Brand", "value": "PetSafe"},
+                    {"label": "Product group", "value": "Toys"},
+                    {"label": "Material", "value": "Fabric"},
+                ],
             },
             {
                 "name": "Clumping Cat Litter",
@@ -940,26 +1025,30 @@ class Command(BaseCommand):
                     {
                         "sku": "LITTER-4KG",
                         "size": "4kg",
-                        "weight": 4.0,
                         "price": 12.99,
                         "stock": 80,
                     },
                     {
                         "sku": "LITTER-8KG",
                         "size": "8kg",
-                        "weight": 8.0,
                         "price": 18.99,
                         "stock": 45,
                     },
                     {
                         "sku": "LITTER-16KG",
                         "size": "16kg",
-                        "weight": 16.0,
                         "price": 32.99,
                         "stock": 25,
                     },
                 ],
                 "attributes": {"Material": "Clay", "Color": "White"},
+                "characteristics": [
+                    {"label": "Animal", "value": "Cats"},
+                    {"label": "Brand", "value": "VetCare"},
+                    {"label": "Product group", "value": "Litter"},
+                    {"label": "Material", "value": "Clay"},
+                    {"label": "Color", "value": "White"},
+                ],
             },
         ]
 
@@ -981,21 +1070,39 @@ class Command(BaseCommand):
                 "rating": 0.0,
                 "review_count": 0,
                 "is_active": True,
-                "composition": "High-quality ingredients for optimal nutrition",
-                "feeding_guidelines": "Feed according to your pet's weight and activity level",
-                "nutritional_value": product_data.get("nutritional_value", {}),
             },
         )
 
+        if not created:
+            product.name = product_data["name"]
+            product.description = product_data["description"]
+            product.short_description = product_data["short_description"]
+            product.brand = product_data["brand"]
+            product.is_active = True
+            product.save(
+                update_fields=[
+                    "name",
+                    "description",
+                    "short_description",
+                    "brand",
+                    "is_active",
+                    "updated_at",
+                ]
+            )
+
         if created:
             self.stdout.write(f"✅ Created {animal_type} product: {product.name}")
+        else:
+            self.stdout.write(f"✅ Updated {animal_type} product: {product.name}")
+
+        self.create_product_content_sections(product, product_data)
 
         product_images = product_data.get("images", [])
 
         for i, image_url in enumerate(product_images):
             is_main = i == 0
 
-            image, image_created = ProductImage.objects.get_or_create(
+            ProductImage.objects.get_or_create(
                 product=product,
                 variant=None,
                 image_url=image_url,
@@ -1011,7 +1118,6 @@ class Command(BaseCommand):
                 product.save(update_fields=["main_image"])
 
         for index, variant_data in enumerate(product_data["variants"]):
-            weight = variant_data.get("weight")
             old_price = variant_data.get("old_price")
             price = Decimal(str(variant_data["price"]))
 
@@ -1029,7 +1135,6 @@ class Command(BaseCommand):
                     "stock": variant_data["stock"],
                     "is_active": True,
                     "is_default": index == 0,
-                    "weight": Decimal(str(weight)) if weight is not None else None,
                 },
             )
 
@@ -1039,7 +1144,6 @@ class Command(BaseCommand):
                 variant.stock = variant_data["stock"]
                 variant.is_active = True
                 variant.is_default = index == 0
-                variant.weight = Decimal(str(weight)) if weight is not None else None
                 variant.save()
 
             if "size" in variant_data:
@@ -1070,6 +1174,34 @@ class Command(BaseCommand):
             else:
                 self.stdout.write(f"   ✅ Updated variant: {variant.sku}")
 
+    def create_product_content_sections(self, product, product_data):
+        ProductCharacteristic.objects.filter(product=product).delete()
+        ProductTypicalAnalysisItem.objects.filter(product=product).delete()
+        ProductFeedingGuidelineRow.objects.filter(product=product).delete()
+
+        for characteristic in product_data.get("characteristics", []):
+            ProductCharacteristic.objects.create(
+                product=product,
+                label=characteristic["label"],
+                value=characteristic["value"],
+            )
+
+        for item in product_data.get("typical_analysis", []):
+            ProductTypicalAnalysisItem.objects.create(
+                product=product,
+                label=item["label"],
+                value=item["value"],
+            )
+
+        for row in product_data.get("feeding_guidelines", []):
+            ProductFeedingGuidelineRow.objects.create(
+                product=product,
+                pet_weight=row["pet_weight"],
+                active_lifestyle=row.get("active_lifestyle", ""),
+                sedentary_lifestyle=row.get("sedentary_lifestyle", ""),
+                overweight=row.get("overweight", ""),
+            )
+
     def attach_variant_attribute(self, variant, attribute_name, raw_value):
         if raw_value is None:
             return
@@ -1089,8 +1221,8 @@ class Command(BaseCommand):
 
         attribute_value, _ = ProductAttributeValue.objects.get_or_create(
             attribute=attribute,
-            slug=slugify(value),
-            defaults={"value": value},
+            value=value,
+            defaults={"slug": "", "display_order": 0},
         )
 
         ProductVariantAttribute.objects.update_or_create(
@@ -1211,24 +1343,27 @@ class Command(BaseCommand):
             self.stdout.write(f"   Name: {sample_product.name}")
             self.stdout.write(f"   URL: /api/products/{sample_product.id}")
 
-        self.stdout.write("\n💡 Product detail review structure now looks like:")
-        self.stdout.write('   "reviews": {')
-        self.stdout.write('       "rating": 4.0,')
-        self.stdout.write('       "review_count": 3,')
-        self.stdout.write('       "reviews": [')
-        self.stdout.write("           {")
-        self.stdout.write('               "id": "...",')
-        self.stdout.write('               "username": "anna",')
-        self.stdout.write('               "created_at": "...",')
-        self.stdout.write('               "rating": 5,')
-        self.stdout.write('               "image_urls": [],')
-        self.stdout.write('               "updated_at": "...",')
-        self.stdout.write('               "comment": "...",')
-        self.stdout.write('               "positive_comment": null,')
-        self.stdout.write('               "negative_comment": null')
+        self.stdout.write("\n💡 content_blocks structure now looks like:")
+        self.stdout.write('   "content_blocks": [')
+        self.stdout.write("       {")
+        self.stdout.write('           "type": "key_value",')
+        self.stdout.write('           "title": "Characteristics",')
+        self.stdout.write('           "content": {')
+        self.stdout.write('               "items": [')
+        self.stdout.write('                   {"key": "Animal", "value": "Dogs"},')
+        self.stdout.write('                   {"key": "Brand", "value": "Royal Canin"}')
+        self.stdout.write("               ]")
         self.stdout.write("           }")
-        self.stdout.write("       ]")
-        self.stdout.write("   }")
+        self.stdout.write("       },")
+        self.stdout.write("       {")
+        self.stdout.write('           "type": "table",')
+        self.stdout.write('           "title": "Feeding Guidelines",')
+        self.stdout.write('           "content": {')
+        self.stdout.write('               "columns": [...],')
+        self.stdout.write('               "rows": [...]')
+        self.stdout.write("           }")
+        self.stdout.write("       }")
+        self.stdout.write("   ]")
 
         self.stdout.write("\n💡 Variant structure now looks like:")
         self.stdout.write('   "variants": [')

@@ -14,6 +14,7 @@ from shop.models import (
     Product,
     ProductAttribute,
     ProductAttributeValue,
+    ProductCharacteristic,
     ProductImage,
     ProductVariant,
     ProductVariantAttribute,
@@ -82,7 +83,6 @@ class Command(BaseCommand):
                 "material",
                 "flavor",
                 "age",
-                "weight",
             }
 
             missing_fields = required_fields - set(reader.fieldnames or [])
@@ -139,8 +139,9 @@ class Command(BaseCommand):
         Deletes products that were imported as mock data.
 
         We identify them by variants with SKU starting with MOCK-.
-        Since ProductImage, ProductVariant, ProductVariantAttribute are linked by CASCADE,
-        deleting Product will clean related mock data too.
+        Since ProductImage, ProductVariant, ProductVariantAttribute and structured
+        content section rows are linked by CASCADE, deleting Product will clean
+        related mock data too.
         """
         product_ids = (
             Product.objects.filter(variants__sku__startswith="MOCK-")
@@ -184,10 +185,16 @@ class Command(BaseCommand):
             main_image=main_image,
         )
 
+        self.sync_product_characteristics(
+            product=product,
+            row=row,
+            brand=brand,
+            category=category,
+        )
+
         price = self.parse_decimal(row.get("price"), required=True)
         old_price = self.parse_decimal(row.get("old_price"), required=False)
         stock = self.parse_int(row.get("stock"), default=0)
-        weight = self.parse_decimal(row.get("weight"), required=False)
 
         if old_price is not None and old_price <= price:
             old_price = None
@@ -200,7 +207,6 @@ class Command(BaseCommand):
             price=price,
             old_price=old_price,
             stock=stock,
-            weight=weight,
             is_active=True,
             is_default=is_default,
         )
@@ -262,6 +268,19 @@ class Command(BaseCommand):
         ).first()
 
         if product:
+            product.description = description or product.description
+            product.short_description = short_description or product.short_description
+            product.main_image = main_image or product.main_image
+            product.is_active = True
+            product.save(
+                update_fields=[
+                    "description",
+                    "short_description",
+                    "main_image",
+                    "is_active",
+                    "updated_at",
+                ]
+            )
             return product, False
 
         product = Product.objects.create(
@@ -278,6 +297,45 @@ class Command(BaseCommand):
         )
 
         return product, True
+
+    def sync_product_characteristics(self, product, row, brand, category):
+        """
+        Populate the admin-friendly Characteristics section from CSV data.
+
+        We intentionally do not create Typical Analysis or Feeding Guidelines here,
+        because the current Mockaroo CSV does not contain reliable columns for them.
+        """
+        values = {
+            "Animal": category.animal_type.name,
+            "Brand": brand.name,
+            "Product group": category.name,
+        }
+
+        for column_name, attribute_name in ATTRIBUTE_COLUMNS.items():
+            value = self.clean_value(row.get(column_name))
+            if value:
+                values[attribute_name] = value
+
+        for label, value in values.items():
+            characteristic = (
+                ProductCharacteristic.objects.filter(
+                    product=product,
+                    label=label,
+                )
+                .order_by("created_at")
+                .first()
+            )
+
+            if characteristic:
+                if characteristic.value != value:
+                    characteristic.value = value
+                    characteristic.save(update_fields=["value"])
+            else:
+                ProductCharacteristic.objects.create(
+                    product=product,
+                    label=label,
+                    value=value,
+                )
 
     def ensure_product_image(self, product, image_url, alt_text, is_main=False):
         """

@@ -399,14 +399,12 @@ class ProductVariantSerializer(serializers.ModelSerializer):
             "discount_percentage",
             "stock",
             "in_stock",
-            "weight",
             "description",
             "short_description",
             "badges",
             "images",
             "is_default",
             "is_active",
-            "display_order",
         ]
 
     def get_attributes(self, obj):
@@ -447,7 +445,6 @@ class ProductVariantCardSerializer(serializers.ModelSerializer):
             "image_url",
             "badges",
             "is_default",
-            "display_order",
         ]
 
     def get_attributes(self, obj):
@@ -584,7 +581,7 @@ class ProductCardSerializer(serializers.ModelSerializer):
                 "variant_attributes__attribute",
                 "variant_attributes__value",
             )
-            .order_by("-is_default", "display_order", "price")
+            .order_by("-is_default", "price", "id")
         )
 
     def _get_default_variant(self, obj):
@@ -601,10 +598,7 @@ class ProductCardSerializer(serializers.ModelSerializer):
         if default_variant:
             return default_variant
 
-        return sorted(
-            variants,
-            key=lambda variant: (variant.display_order, variant.price),
-        )[0]
+        return variants[0]
 
     def get_brand(self, obj):
         if not obj.brand:
@@ -859,12 +853,6 @@ class ProductDetailSerializer(ProductCardSerializer):
             "content_blocks",
             "meta_title",
             "meta_description",
-            "composition",
-            "nutritional_analysis",
-            "feeding_guidelines",
-            "ingredients",
-            "nutritional_value",
-            "feeding_table",
             "created_at",
         ]
 
@@ -897,120 +885,32 @@ class ProductDetailSerializer(ProductCardSerializer):
         return ProductVariantSerializer(variants, many=True).data
 
     def get_content_blocks(self, obj):
-        if obj.content_blocks:
-            return obj.content_blocks
-
-        return self._build_legacy_content_blocks(obj)
-
-    def _build_legacy_content_blocks(self, obj):
         blocks = []
 
-        if obj.description:
-            blocks.append(
-                {
-                    "type": "text",
-                    "title": "Description",
-                    "content": {
-                        "text": obj.description,
-                    },
-                }
-            )
+        characteristics_block = self._build_characteristics_block(obj)
+        if characteristics_block:
+            blocks.append(characteristics_block)
 
-        if obj.composition:
-            blocks.append(
-                {
-                    "type": "text",
-                    "title": "Composition",
-                    "content": {
-                        "text": obj.composition,
-                    },
-                }
-            )
+        typical_analysis_block = self._build_typical_analysis_block(obj)
+        if typical_analysis_block:
+            blocks.append(typical_analysis_block)
 
-        if obj.ingredients:
-            blocks.append(
-                {
-                    "type": "text",
-                    "title": "Ingredients",
-                    "content": {
-                        "text": obj.ingredients,
-                    },
-                }
-            )
+        feeding_guidelines_block = self._build_feeding_guidelines_block(obj)
+        if feeding_guidelines_block:
+            blocks.append(feeding_guidelines_block)
 
-        if obj.nutritional_analysis:
-            blocks.append(
-                {
-                    "type": "text",
-                    "title": "Typical analysis",
-                    "content": {
-                        "text": obj.nutritional_analysis,
-                    },
-                }
-            )
-
-        if obj.feeding_guidelines:
-            blocks.append(
-                {
-                    "type": "text",
-                    "title": "Feeding guidelines",
-                    "content": {
-                        "text": obj.feeding_guidelines,
-                    },
-                }
-            )
-
-        if obj.nutritional_value:
-            items = [
-                {
-                    "key": str(key),
-                    "value": str(value),
-                }
-                for key, value in obj.nutritional_value.items()
-            ]
-
-            if items:
-                blocks.append(
-                    {
-                        "type": "key_value",
-                        "title": "Nutritional value",
-                        "content": {
-                            "items": items,
-                        },
-                    }
-                )
-
-        if obj.feeding_table:
-            feeding_table_block = self._build_feeding_table_block(obj.feeding_table)
-
-            if feeding_table_block:
-                blocks.append(feeding_table_block)
+        if obj.content_blocks:
+            blocks.extend(obj.content_blocks)
 
         return blocks
 
-    def _build_feeding_table_block(self, feeding_table):
-        if not isinstance(feeding_table, dict):
-            return None
-
-        columns = feeding_table.get("columns")
-        rows = feeding_table.get("rows")
-
-        if isinstance(columns, list) and isinstance(rows, list):
-            return {
-                "type": "table",
-                "title": "Feeding table",
-                "content": {
-                    "columns": columns,
-                    "rows": rows,
-                },
-            }
-
+    def _build_characteristics_block(self, obj):
         items = [
             {
-                "key": str(key),
-                "value": str(value),
+                "key": characteristic.label,
+                "value": characteristic.value,
             }
-            for key, value in feeding_table.items()
+            for characteristic in obj.characteristics.all()
         ]
 
         if not items:
@@ -1018,9 +918,71 @@ class ProductDetailSerializer(ProductCardSerializer):
 
         return {
             "type": "key_value",
-            "title": "Feeding table",
+            "title": "Characteristics",
             "content": {
                 "items": items,
+            },
+        }
+
+    def _build_typical_analysis_block(self, obj):
+        items = [
+            {
+                "key": analysis_item.label,
+                "value": analysis_item.value,
+            }
+            for analysis_item in obj.typical_analysis_items.all()
+        ]
+
+        if not items:
+            return None
+
+        return {
+            "type": "key_value",
+            "title": "Typical Analysis",
+            "content": {
+                "items": items,
+            },
+        }
+
+    def _build_feeding_guidelines_block(self, obj):
+        rows = []
+
+        for row in obj.feeding_guideline_rows.all():
+            rows.append(
+                {
+                    "pet_weight": row.pet_weight,
+                    "active_lifestyle": row.active_lifestyle,
+                    "sedentary_lifestyle": row.sedentary_lifestyle,
+                    "overweight": row.overweight,
+                }
+            )
+
+        if not rows:
+            return None
+
+        return {
+            "type": "table",
+            "title": "Feeding Guidelines",
+            "content": {
+                "columns": [
+                    {
+                        "id": "pet_weight",
+                        "title": "Pet weight",
+                    },
+                    {
+                        "id": "active_lifestyle",
+                        "title": "Active lifestyle",
+                    },
+                    {
+                        "id": "sedentary_lifestyle",
+                        "title": "Sedentary lifestyle",
+                    },
+                    {
+                        "id": "overweight",
+                        "title": "Overweight",
+                    },
+                ],
+                "rows": rows,
             },
         }
 

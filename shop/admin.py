@@ -26,8 +26,11 @@ from .models import (
     Product,
     ProductAttribute,
     ProductAttributeValue,
+    ProductCharacteristic,
+    ProductFeedingGuidelineRow,
     ProductImage,
     ProductReview,
+    ProductTypicalAnalysisItem,
     ProductVariant,
     ProductVariantAttribute,
 )
@@ -138,9 +141,6 @@ class ProductVariantForm(forms.ModelForm):
             "is_active": (
                 "Inactive variants are hidden from API and cannot be selected "
                 "by customers."
-            ),
-            "display_order": (
-                "Controls display order of variants. Lower values appear first."
             ),
             "cost_price": (
                 "Internal purchase/cost price. Customers do not see this value."
@@ -378,12 +378,7 @@ class ProductVariantAttributeInline(nested_admin.NestedTabularInline):
     form = ProductVariantAttributeForm
     extra = 1
     inline_classes = ("collapse", "open")
-
-    # Important:
-    # Do not put "value" here, otherwise Django autocomplete shows values
-    # from all attributes.
     autocomplete_fields = ("attribute",)
-
     fields = ("attribute", "value")
     ordering = ("attribute__display_order", "value__display_order")
     show_change_link = True
@@ -427,7 +422,7 @@ class ProductVariantsInline(nested_admin.NestedStackedInline):
     """
     Product variants shown inside Product admin.
 
-    Now each variant contains its own:
+    Each variant contains its own:
     - attributes;
     - variant images.
     """
@@ -449,6 +444,7 @@ class ProductVariantsInline(nested_admin.NestedStackedInline):
         "created_at",
         "updated_at",
     )
+    ordering = ("-is_default", "price", "id")
 
     fieldsets = (
         (
@@ -456,7 +452,7 @@ class ProductVariantsInline(nested_admin.NestedStackedInline):
             {
                 "fields": (
                     ("sku", "is_active", "is_default"),
-                    ("display_order", "stock", "weight"),
+                    "stock",
                     ("price", "old_price", "discount_percent", "cost_price"),
                     ("has_discount_display", "discount_percentage_display"),
                     "badges",
@@ -532,6 +528,35 @@ class ProductImagesInline(nested_admin.NestedTabularInline):
         return image_preview(obj.image_url, height=80)
 
     preview.short_description = "Preview"
+
+
+class ProductCharacteristicInline(nested_admin.NestedTabularInline):
+    model = ProductCharacteristic
+    extra = 1
+    fields = ("label", "value")
+    verbose_name = "Characteristic"
+    verbose_name_plural = "Characteristics"
+
+
+class ProductTypicalAnalysisItemInline(nested_admin.NestedTabularInline):
+    model = ProductTypicalAnalysisItem
+    extra = 1
+    fields = ("label", "value")
+    verbose_name = "Typical analysis item"
+    verbose_name_plural = "Typical analysis"
+
+
+class ProductFeedingGuidelineRowInline(nested_admin.NestedTabularInline):
+    model = ProductFeedingGuidelineRow
+    extra = 1
+    fields = (
+        "pet_weight",
+        "active_lifestyle",
+        "sedentary_lifestyle",
+        "overweight",
+    )
+    verbose_name = "Feeding guideline row"
+    verbose_name_plural = "Feeding guidelines"
 
 
 class CartItemsInline(admin.TabularInline):
@@ -743,6 +768,9 @@ class ProductAdmin(nested_admin.NestedModelAdmin):
     inlines = (
         ProductVariantsInline,
         ProductImagesInline,
+        ProductCharacteristicInline,
+        ProductTypicalAnalysisItemInline,
+        ProductFeedingGuidelineRowInline,
     )
 
     fieldsets = (
@@ -774,35 +802,15 @@ class ProductAdmin(nested_admin.NestedModelAdmin):
             },
         ),
         (
-            "Dynamic content blocks",
+            "Advanced custom content blocks",
             {
                 "fields": ("content_blocks",),
-                "description": (
-                    "Preferred new way to manage product page content. "
-                    "Use blocks: text, key/value, table."
-                ),
-            },
-        ),
-        (
-            "Legacy content",
-            {
-                "fields": (
-                    "composition",
-                    "ingredients",
-                    "nutritional_analysis",
-                    "feeding_guidelines",
-                ),
                 "classes": ("collapse",),
                 "description": (
-                    "Legacy fields. Prefer Dynamic content blocks for new products."
+                    "Optional advanced blocks for non-standard product page content. "
+                    "For common product data, use Characteristics, Typical analysis "
+                    "and Feeding guidelines sections below."
                 ),
-            },
-        ),
-        (
-            "Structured data",
-            {
-                "fields": ("nutritional_value", "feeding_table"),
-                "classes": ("collapse",),
             },
         ),
         (
@@ -834,6 +842,9 @@ class ProductAdmin(nested_admin.NestedModelAdmin):
                 "variants__variant_attributes__value",
                 "variants__images",
                 "images",
+                "characteristics",
+                "typical_analysis_items",
+                "feeding_guideline_rows",
             )
         )
 
@@ -879,7 +890,6 @@ class ProductVariantAdmin(nested_admin.NestedModelAdmin):
         "has_discount_display",
         "discount_percentage_display",
         "is_active",
-        "display_order",
     )
     list_select_related = ("product", "product__brand", "product__category")
     list_filter = ("is_active", "is_default", "product__brand", "product__category")
@@ -891,7 +901,7 @@ class ProductVariantAdmin(nested_admin.NestedModelAdmin):
         "created_at",
         "updated_at",
     )
-    ordering = ("product", "display_order", "price")
+    ordering = ("product__name", "-is_default", "price", "id")
     inlines = (
         ProductVariantAttributeInline,
         ProductVariantImagesInline,
@@ -904,7 +914,7 @@ class ProductVariantAdmin(nested_admin.NestedModelAdmin):
                 "fields": (
                     "product",
                     ("sku", "is_active", "is_default"),
-                    ("display_order", "stock", "weight"),
+                    "stock",
                     ("price", "old_price", "discount_percent", "cost_price"),
                     ("has_discount_display", "discount_percentage_display"),
                     "badges",
@@ -959,6 +969,51 @@ class ProductVariantAdmin(nested_admin.NestedModelAdmin):
         return f"{obj.discount_percentage}%"
 
     discount_percentage_display.short_description = "Discount %"
+
+
+# ======================================================
+# PRODUCT CONTENT SECTIONS
+# ======================================================
+
+
+@admin.register(ProductCharacteristic)
+class ProductCharacteristicAdmin(admin.ModelAdmin):
+    list_display = ("product", "label", "value", "created_at")
+    list_select_related = ("product",)
+    autocomplete_fields = ("product",)
+    search_fields = ("product__name", "label", "value")
+    ordering = ("product__name", "created_at")
+
+
+@admin.register(ProductTypicalAnalysisItem)
+class ProductTypicalAnalysisItemAdmin(admin.ModelAdmin):
+    list_display = ("product", "label", "value", "created_at")
+    list_select_related = ("product",)
+    autocomplete_fields = ("product",)
+    search_fields = ("product__name", "label", "value")
+    ordering = ("product__name", "created_at")
+
+
+@admin.register(ProductFeedingGuidelineRow)
+class ProductFeedingGuidelineRowAdmin(admin.ModelAdmin):
+    list_display = (
+        "product",
+        "pet_weight",
+        "active_lifestyle",
+        "sedentary_lifestyle",
+        "overweight",
+        "created_at",
+    )
+    list_select_related = ("product",)
+    autocomplete_fields = ("product",)
+    search_fields = (
+        "product__name",
+        "pet_weight",
+        "active_lifestyle",
+        "sedentary_lifestyle",
+        "overweight",
+    )
+    ordering = ("product__name", "created_at")
 
 
 # ======================================================
