@@ -4,14 +4,7 @@ import nested_admin
 from django import forms
 from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin
-from django.db.models import (
-    Count,
-    DecimalField,
-    ExpressionWrapper,
-    F,
-    Q,
-    Sum,
-)
+from django.db.models import Count, DecimalField, ExpressionWrapper, F, Q, Sum
 from django.forms.models import BaseInlineFormSet
 from django.utils.html import format_html
 
@@ -26,19 +19,11 @@ from .models import (
     Product,
     ProductAttribute,
     ProductAttributeValue,
-    ProductCharacteristic,
-    ProductFeedingGuidelineRow,
     ProductImage,
     ProductReview,
-    ProductTypicalAnalysisItem,
     ProductVariant,
     ProductVariantAttribute,
 )
-
-
-# ======================================================
-# UTILITIES
-# ======================================================
 
 
 def image_preview(image_url, height=60):
@@ -48,20 +33,10 @@ def image_preview(image_url, height=60):
             image_url,
             height,
         )
-
     return "-"
 
 
 def unset_other_main_images(image):
-    """
-    Keep only one main product image and one main image per variant.
-
-    Product-level main image:
-    product=X, variant=None, is_main=True
-
-    Variant-level main image:
-    product=X, variant=Y, is_main=True
-    """
     if not image.is_main or not image.product_id:
         return
 
@@ -79,11 +54,6 @@ def unset_other_main_images(image):
         ).exclude(pk=image.pk).update(is_main=False)
 
 
-# ======================================================
-# FORMS
-# ======================================================
-
-
 class CategoryForm(forms.ModelForm):
     class Meta:
         model = Category
@@ -94,7 +64,6 @@ class CategoryForm(forms.ModelForm):
         parent = cleaned.get("parent")
 
         node = parent
-
         while node:
             if node == self.instance:
                 raise forms.ValidationError("Circular category hierarchy detected.")
@@ -104,15 +73,6 @@ class CategoryForm(forms.ModelForm):
 
 
 class ProductVariantForm(forms.ModelForm):
-    """
-    Admin form for ProductVariant.
-
-    Adds non-model discount_percent field:
-    - admin can enter old_price and discount %
-    - price will be calculated automatically
-    - discount_percent is not stored in DB
-    """
-
     discount_percent = forms.DecimalField(
         required=False,
         min_value=Decimal("0.01"),
@@ -149,11 +109,9 @@ class ProductVariantForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-
         self.fields["price"].required = False
 
         instance = self.instance
-
         if instance and instance.pk and instance.old_price and instance.price:
             if instance.old_price > instance.price:
                 discount = (
@@ -183,12 +141,10 @@ class ProductVariantForm(forms.ModelForm):
                 )
 
             multiplier = (Decimal("100") - discount_percent) / Decimal("100")
-            calculated_price = (old_price * multiplier).quantize(
+            cleaned_data["price"] = (old_price * multiplier).quantize(
                 Decimal("0.01"),
                 rounding=ROUND_HALF_UP,
             )
-
-            cleaned_data["price"] = calculated_price
             return cleaned_data
 
         if price is None:
@@ -200,13 +156,6 @@ class ProductVariantForm(forms.ModelForm):
 
 
 class ProductVariantAttributeForm(forms.ModelForm):
-    """
-    Admin form for ProductVariantAttribute.
-
-    Filters value queryset by selected attribute for existing/bound forms
-    and validates that selected value belongs to selected attribute.
-    """
-
     class Meta:
         model = ProductVariantAttribute
         fields = "__all__"
@@ -247,19 +196,7 @@ class ProductVariantAttributeForm(forms.ModelForm):
         return cleaned_data
 
 
-# ======================================================
-# INLINE FORMSETS
-# ======================================================
-
-
 class ProductImageInlineFormSet(BaseInlineFormSet):
-    """
-    Inline for base product images inside Product admin.
-
-    These images are product-level images only.
-    Variant-specific images are managed inside each ProductVariant inline.
-    """
-
     def clean(self):
         super().clean()
 
@@ -306,13 +243,6 @@ class ProductImageInlineFormSet(BaseInlineFormSet):
 
 
 class ProductVariantImageInlineFormSet(BaseInlineFormSet):
-    """
-    Inline for images inside ProductVariant admin.
-
-    ProductImage has both product and variant.
-    When editing image from variant block, product and variant are set automatically.
-    """
-
     def clean(self):
         super().clean()
 
@@ -360,20 +290,7 @@ class ProductVariantImageInlineFormSet(BaseInlineFormSet):
         return image
 
 
-# ======================================================
-# NESTED INLINES
-# ======================================================
-
-
 class ProductVariantAttributeInline(nested_admin.NestedTabularInline):
-    """
-    Attribute rows for concrete variant.
-
-    Example:
-    Attribute: Size  -> Value: M
-    Attribute: Color -> Value: Pink
-    """
-
     model = ProductVariantAttribute
     form = ProductVariantAttributeForm
     extra = 1
@@ -387,12 +304,6 @@ class ProductVariantAttributeInline(nested_admin.NestedTabularInline):
 
 
 class ProductVariantImagesInline(nested_admin.NestedTabularInline):
-    """
-    Variant-specific images.
-
-    These images are displayed inside each ProductVariant block.
-    """
-
     model = ProductImage
     formset = ProductVariantImageInlineFormSet
     fk_name = "variant"
@@ -419,14 +330,6 @@ class ProductVariantImagesInline(nested_admin.NestedTabularInline):
 
 
 class ProductVariantsInline(nested_admin.NestedStackedInline):
-    """
-    Product variants shown inside Product admin.
-
-    Each variant contains its own:
-    - attributes;
-    - variant images.
-    """
-
     model = ProductVariant
     form = ProductVariantForm
     extra = 0
@@ -462,10 +365,7 @@ class ProductVariantsInline(nested_admin.NestedStackedInline):
         (
             "Variant content overrides",
             {
-                "fields": (
-                    "short_description",
-                    "description",
-                ),
+                "fields": ("short_description", "description"),
                 "classes": ("collapse",),
             },
         ),
@@ -481,7 +381,6 @@ class ProductVariantsInline(nested_admin.NestedStackedInline):
     def has_discount_display(self, obj):
         if not obj.pk:
             return False
-
         return obj.has_discount
 
     has_discount_display.short_description = "Has discount"
@@ -490,19 +389,12 @@ class ProductVariantsInline(nested_admin.NestedStackedInline):
     def discount_percentage_display(self, obj):
         if not obj.pk or not obj.has_discount:
             return "-"
-
         return f"{obj.discount_percentage}%"
 
     discount_percentage_display.short_description = "Discount %"
 
 
 class ProductImagesInline(nested_admin.NestedTabularInline):
-    """
-    Base product images only.
-
-    Variant-specific images are inside Product variants.
-    """
-
     model = ProductImage
     formset = ProductImageInlineFormSet
     extra = 1
@@ -530,45 +422,11 @@ class ProductImagesInline(nested_admin.NestedTabularInline):
     preview.short_description = "Preview"
 
 
-class ProductCharacteristicInline(nested_admin.NestedTabularInline):
-    model = ProductCharacteristic
-    extra = 1
-    fields = ("label", "value")
-    verbose_name = "Characteristic"
-    verbose_name_plural = "Characteristics"
-
-
-class ProductTypicalAnalysisItemInline(nested_admin.NestedTabularInline):
-    model = ProductTypicalAnalysisItem
-    extra = 1
-    fields = ("label", "value")
-    verbose_name = "Typical analysis item"
-    verbose_name_plural = "Typical analysis"
-
-
-class ProductFeedingGuidelineRowInline(nested_admin.NestedTabularInline):
-    model = ProductFeedingGuidelineRow
-    extra = 1
-    fields = (
-        "pet_weight",
-        "active_lifestyle",
-        "sedentary_lifestyle",
-        "overweight",
-    )
-    verbose_name = "Feeding guideline row"
-    verbose_name_plural = "Feeding guidelines"
-
-
 class CartItemsInline(admin.TabularInline):
     model = CartItem
     extra = 0
     autocomplete_fields = ("variant",)
     readonly_fields = ("total_price",)
-
-
-# ======================================================
-# CUSTOMER
-# ======================================================
 
 
 @admin.register(Customer)
@@ -580,11 +438,6 @@ class CustomerAdmin(UserAdmin):
     fieldsets = UserAdmin.fieldsets + (
         ("Verification", {"fields": ("email_verified",)}),
     )
-
-
-# ======================================================
-# ANIMAL TYPE
-# ======================================================
 
 
 @admin.register(AnimalType)
@@ -619,11 +472,6 @@ class AnimalTypeAdmin(admin.ModelAdmin):
         return obj._product_count
 
     product_count.short_description = "Active products"
-
-
-# ======================================================
-# CATEGORY
-# ======================================================
 
 
 @admin.register(Category)
@@ -662,11 +510,6 @@ class CategoryAdmin(admin.ModelAdmin):
     product_count.short_description = "Active products"
 
 
-# ======================================================
-# BRAND
-# ======================================================
-
-
 @admin.register(Brand)
 class BrandAdmin(admin.ModelAdmin):
     list_display = ("name", "is_active", "product_count", "logo")
@@ -697,11 +540,6 @@ class BrandAdmin(admin.ModelAdmin):
     logo.short_description = "Logo"
 
 
-# ======================================================
-# BADGE
-# ======================================================
-
-
 @admin.register(Badge)
 class BadgeAdmin(admin.ModelAdmin):
     list_display = ("label", "slug", "is_active", "color_preview", "created_at")
@@ -717,11 +555,6 @@ class BadgeAdmin(admin.ModelAdmin):
         )
 
     color_preview.short_description = "Color"
-
-
-# ======================================================
-# PRODUCT
-# ======================================================
 
 
 @admin.register(Product)
@@ -768,9 +601,6 @@ class ProductAdmin(nested_admin.NestedModelAdmin):
     inlines = (
         ProductVariantsInline,
         ProductImagesInline,
-        ProductCharacteristicInline,
-        ProductTypicalAnalysisItemInline,
-        ProductFeedingGuidelineRowInline,
     )
 
     fieldsets = (
@@ -805,11 +635,9 @@ class ProductAdmin(nested_admin.NestedModelAdmin):
             "Advanced custom content blocks",
             {
                 "fields": ("content_blocks",),
-                "classes": ("collapse",),
                 "description": (
-                    "Optional advanced blocks for non-standard product page content. "
-                    "For common product data, use Characteristics, Typical analysis "
-                    "and Feeding guidelines sections below."
+                    "Main way to manage custom product page content. "
+                    "Use blocks: text, key/value, table."
                 ),
             },
         ),
@@ -842,9 +670,6 @@ class ProductAdmin(nested_admin.NestedModelAdmin):
                 "variants__variant_attributes__value",
                 "variants__images",
                 "images",
-                "characteristics",
-                "typical_analysis_items",
-                "feeding_guideline_rows",
             )
         )
 
@@ -868,11 +693,6 @@ class ProductAdmin(nested_admin.NestedModelAdmin):
 
     in_stock_display.short_description = "In stock"
     in_stock_display.boolean = True
-
-
-# ======================================================
-# PRODUCT VARIANT
-# ======================================================
 
 
 @admin.register(ProductVariant)
@@ -924,10 +744,7 @@ class ProductVariantAdmin(nested_admin.NestedModelAdmin):
         (
             "Variant content overrides",
             {
-                "fields": (
-                    "short_description",
-                    "description",
-                ),
+                "fields": ("short_description", "description"),
                 "classes": ("collapse",),
             },
         ),
@@ -956,7 +773,6 @@ class ProductVariantAdmin(nested_admin.NestedModelAdmin):
     def has_discount_display(self, obj):
         if not obj.pk:
             return False
-
         return obj.has_discount
 
     has_discount_display.short_description = "Has discount"
@@ -965,60 +781,9 @@ class ProductVariantAdmin(nested_admin.NestedModelAdmin):
     def discount_percentage_display(self, obj):
         if not obj.pk or not obj.has_discount:
             return "-"
-
         return f"{obj.discount_percentage}%"
 
     discount_percentage_display.short_description = "Discount %"
-
-
-# ======================================================
-# PRODUCT CONTENT SECTIONS
-# ======================================================
-
-
-@admin.register(ProductCharacteristic)
-class ProductCharacteristicAdmin(admin.ModelAdmin):
-    list_display = ("product", "label", "value", "created_at")
-    list_select_related = ("product",)
-    autocomplete_fields = ("product",)
-    search_fields = ("product__name", "label", "value")
-    ordering = ("product__name", "created_at")
-
-
-@admin.register(ProductTypicalAnalysisItem)
-class ProductTypicalAnalysisItemAdmin(admin.ModelAdmin):
-    list_display = ("product", "label", "value", "created_at")
-    list_select_related = ("product",)
-    autocomplete_fields = ("product",)
-    search_fields = ("product__name", "label", "value")
-    ordering = ("product__name", "created_at")
-
-
-@admin.register(ProductFeedingGuidelineRow)
-class ProductFeedingGuidelineRowAdmin(admin.ModelAdmin):
-    list_display = (
-        "product",
-        "pet_weight",
-        "active_lifestyle",
-        "sedentary_lifestyle",
-        "overweight",
-        "created_at",
-    )
-    list_select_related = ("product",)
-    autocomplete_fields = ("product",)
-    search_fields = (
-        "product__name",
-        "pet_weight",
-        "active_lifestyle",
-        "sedentary_lifestyle",
-        "overweight",
-    )
-    ordering = ("product__name", "created_at")
-
-
-# ======================================================
-# VARIANT ATTRIBUTES
-# ======================================================
 
 
 @admin.register(ProductVariantAttribute)
@@ -1026,12 +791,7 @@ class ProductVariantAttributeAdmin(admin.ModelAdmin):
     form = ProductVariantAttributeForm
 
     list_display = ("variant", "attribute", "value")
-    list_select_related = (
-        "variant",
-        "variant__product",
-        "attribute",
-        "value",
-    )
+    list_select_related = ("variant", "variant__product", "attribute", "value")
     autocomplete_fields = ("variant", "attribute")
     search_fields = (
         "variant__sku",
@@ -1041,11 +801,6 @@ class ProductVariantAttributeAdmin(admin.ModelAdmin):
     )
     list_filter = ("attribute",)
     ordering = ("variant__product__name", "variant__sku", "attribute__display_order")
-
-
-# ======================================================
-# ATTRIBUTES
-# ======================================================
 
 
 @admin.register(ProductAttribute)
@@ -1065,11 +820,6 @@ class ProductAttributeValueAdmin(admin.ModelAdmin):
     autocomplete_fields = ("attribute",)
     search_fields = ("value", "slug", "attribute__name")
     ordering = ("attribute__name", "display_order", "value")
-
-
-# ======================================================
-# IMAGES
-# ======================================================
 
 
 @admin.register(ProductImage)
@@ -1109,11 +859,6 @@ class ProductImageAdmin(admin.ModelAdmin):
         super().save_model(request, obj, form, change)
 
 
-# ======================================================
-# REVIEWS
-# ======================================================
-
-
 @admin.register(ProductReview)
 class ProductReviewAdmin(admin.ModelAdmin):
     list_display = (
@@ -1126,12 +871,7 @@ class ProductReviewAdmin(admin.ModelAdmin):
     )
     list_select_related = ("product", "user")
     list_filter = ("is_active", "is_verified", "rating", "created_at")
-    search_fields = (
-        "product__name",
-        "user__email",
-        "title",
-        "comment",
-    )
+    search_fields = ("product__name", "user__email", "title", "comment")
     autocomplete_fields = ("product", "user")
     readonly_fields = ("created_at", "updated_at")
     date_hierarchy = "created_at"
@@ -1162,7 +902,6 @@ class ProductReviewAdmin(admin.ModelAdmin):
     @admin.action(description="Activate selected reviews")
     def activate_reviews(self, request, queryset):
         updated = queryset.update(is_active=True)
-
         self.message_user(
             request,
             f"{updated} review(s) activated.",
@@ -1172,17 +911,11 @@ class ProductReviewAdmin(admin.ModelAdmin):
     @admin.action(description="Deactivate selected reviews")
     def deactivate_reviews(self, request, queryset):
         updated = queryset.update(is_active=False)
-
         self.message_user(
             request,
             f"{updated} review(s) deactivated.",
             level=messages.WARNING,
         )
-
-
-# ======================================================
-# CART
-# ======================================================
 
 
 @admin.register(Cart)
@@ -1218,11 +951,6 @@ class CartAdmin(admin.ModelAdmin):
         return obj._price_sum or 0
 
     total_price.short_description = "Total price"
-
-
-# ======================================================
-# CART ITEM
-# ======================================================
 
 
 @admin.register(CartItem)
