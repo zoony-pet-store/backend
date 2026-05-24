@@ -12,11 +12,8 @@ from shop.models import (
     Product,
     ProductAttribute,
     ProductAttributeValue,
-    ProductCharacteristic,
-    ProductFeedingGuidelineRow,
     ProductImage,
     ProductReview,
-    ProductTypicalAnalysisItem,
     ProductVariant,
     ProductVariantAttribute,
 )
@@ -532,12 +529,7 @@ class Command(BaseCommand):
             if created:
                 self.stdout.write(f"✅ Created attribute: {attribute.name}")
 
-        self.create_sample_products(
-            dog_type,
-            cat_type,
-            brand_objects,
-            attribute_objects,
-        )
+        self.create_sample_products(dog_type, cat_type, brand_objects)
 
         review_users = self.create_test_users()
         self.create_sample_reviews(review_users)
@@ -626,7 +618,7 @@ class Command(BaseCommand):
         product.rating = round(avg_rating, 2)
         product.save(update_fields=["review_count", "rating"])
 
-    def create_sample_products(self, dog_type, cat_type, brands, attributes):
+    def create_sample_products(self, dog_type, cat_type, brands):
         dog_dry_food = Category.objects.get(
             animal_type=dog_type,
             slug="dry-food",
@@ -669,7 +661,7 @@ class Command(BaseCommand):
             parent__slug="care-hygiene",
         )
 
-        dog_products = [
+        products = [
             {
                 "name": "Premium Adult Dog Food",
                 "slug": "premium-adult-dog-food",
@@ -682,18 +674,8 @@ class Command(BaseCommand):
                     "https://images.unsplash.com/photo-1559056199-641a0ac8b55e?w=600&h=600&fit=crop",
                 ],
                 "variants": [
-                    {
-                        "sku": "DOG-FOOD-2KG",
-                        "size": "2kg",
-                        "price": 25.99,
-                        "stock": 50,
-                    },
-                    {
-                        "sku": "DOG-FOOD-5KG",
-                        "size": "5kg",
-                        "price": 45.99,
-                        "stock": 30,
-                    },
+                    {"sku": "DOG-FOOD-2KG", "size": "2kg", "price": 25.99, "stock": 50},
+                    {"sku": "DOG-FOOD-5KG", "size": "5kg", "price": 45.99, "stock": 30},
                     {
                         "sku": "DOG-FOOD-10KG",
                         "size": "10kg",
@@ -862,9 +844,6 @@ class Command(BaseCommand):
                     {"label": "Material", "value": "Fabric"},
                 ],
             },
-        ]
-
-        cat_products = [
             {
                 "name": "Indoor Cat Formula",
                 "slug": "indoor-cat-formula",
@@ -882,18 +861,8 @@ class Command(BaseCommand):
                         "price": 22.99,
                         "stock": 40,
                     },
-                    {
-                        "sku": "CAT-FOOD-3KG",
-                        "size": "3kg",
-                        "price": 38.99,
-                        "stock": 25,
-                    },
-                    {
-                        "sku": "CAT-FOOD-7KG",
-                        "size": "7kg",
-                        "price": 65.99,
-                        "stock": 15,
-                    },
+                    {"sku": "CAT-FOOD-3KG", "size": "3kg", "price": 38.99, "stock": 25},
+                    {"sku": "CAT-FOOD-7KG", "size": "7kg", "price": 65.99, "stock": 15},
                 ],
                 "attributes": {"Flavor": "Salmon", "Age": "Adult"},
                 "characteristics": [
@@ -990,18 +959,8 @@ class Command(BaseCommand):
                         "price": 11.99,
                         "stock": 70,
                     },
-                    {
-                        "sku": "WAND-MOUSE",
-                        "color": "Gray",
-                        "price": 12.99,
-                        "stock": 50,
-                    },
-                    {
-                        "sku": "WAND-BELL",
-                        "color": "Red",
-                        "price": 10.99,
-                        "stock": 60,
-                    },
+                    {"sku": "WAND-MOUSE", "color": "Gray", "price": 12.99, "stock": 50},
+                    {"sku": "WAND-BELL", "color": "Red", "price": 10.99, "stock": 60},
                 ],
                 "attributes": {"Material": "Fabric"},
                 "characteristics": [
@@ -1022,24 +981,9 @@ class Command(BaseCommand):
                     "https://images.unsplash.com/photo-1591946614720-90a587da4a36?w=600&h=600&fit=crop"
                 ],
                 "variants": [
-                    {
-                        "sku": "LITTER-4KG",
-                        "size": "4kg",
-                        "price": 12.99,
-                        "stock": 80,
-                    },
-                    {
-                        "sku": "LITTER-8KG",
-                        "size": "8kg",
-                        "price": 18.99,
-                        "stock": 45,
-                    },
-                    {
-                        "sku": "LITTER-16KG",
-                        "size": "16kg",
-                        "price": 32.99,
-                        "stock": 25,
-                    },
+                    {"sku": "LITTER-4KG", "size": "4kg", "price": 12.99, "stock": 80},
+                    {"sku": "LITTER-8KG", "size": "8kg", "price": 18.99, "stock": 45},
+                    {"sku": "LITTER-16KG", "size": "16kg", "price": 32.99, "stock": 25},
                 ],
                 "attributes": {"Material": "Clay", "Color": "White"},
                 "characteristics": [
@@ -1052,13 +996,12 @@ class Command(BaseCommand):
             },
         ]
 
-        for product_data in dog_products:
-            self.create_product_with_variants(product_data, "dog")
+        for product_data in products:
+            self.create_product_with_variants(product_data)
 
-        for product_data in cat_products:
-            self.create_product_with_variants(product_data, "cat")
+    def create_product_with_variants(self, product_data):
+        content_blocks = self.build_content_blocks(product_data)
 
-    def create_product_with_variants(self, product_data, animal_type):
         product, created = Product.objects.get_or_create(
             slug=product_data["slug"],
             category=product_data["category"],
@@ -1070,6 +1013,7 @@ class Command(BaseCommand):
                 "rating": 0.0,
                 "review_count": 0,
                 "is_active": True,
+                "content_blocks": content_blocks,
             },
         )
 
@@ -1079,6 +1023,7 @@ class Command(BaseCommand):
             product.short_description = product_data["short_description"]
             product.brand = product_data["brand"]
             product.is_active = True
+            product.content_blocks = content_blocks
             product.save(
                 update_fields=[
                     "name",
@@ -1086,16 +1031,15 @@ class Command(BaseCommand):
                     "short_description",
                     "brand",
                     "is_active",
+                    "content_blocks",
                     "updated_at",
                 ]
             )
 
         if created:
-            self.stdout.write(f"✅ Created {animal_type} product: {product.name}")
+            self.stdout.write(f"✅ Created product: {product.name}")
         else:
-            self.stdout.write(f"✅ Updated {animal_type} product: {product.name}")
-
-        self.create_product_content_sections(product, product_data)
+            self.stdout.write(f"✅ Updated product: {product.name}")
 
         product_images = product_data.get("images", [])
 
@@ -1174,33 +1118,70 @@ class Command(BaseCommand):
             else:
                 self.stdout.write(f"   ✅ Updated variant: {variant.sku}")
 
-    def create_product_content_sections(self, product, product_data):
-        ProductCharacteristic.objects.filter(product=product).delete()
-        ProductTypicalAnalysisItem.objects.filter(product=product).delete()
-        ProductFeedingGuidelineRow.objects.filter(product=product).delete()
+    def build_content_blocks(self, product_data):
+        blocks = []
 
-        for characteristic in product_data.get("characteristics", []):
-            ProductCharacteristic.objects.create(
-                product=product,
-                label=characteristic["label"],
-                value=characteristic["value"],
+        characteristics = product_data.get("characteristics", [])
+        if characteristics:
+            blocks.append(
+                {
+                    "key": "characteristics",
+                    "type": "key_value",
+                    "title": "Characteristics",
+                    "content": {
+                        "items": [
+                            {
+                                "key": item["label"],
+                                "value": item["value"],
+                            }
+                            for item in characteristics
+                        ]
+                    },
+                }
             )
 
-        for item in product_data.get("typical_analysis", []):
-            ProductTypicalAnalysisItem.objects.create(
-                product=product,
-                label=item["label"],
-                value=item["value"],
+        typical_analysis = product_data.get("typical_analysis", [])
+        if typical_analysis:
+            blocks.append(
+                {
+                    "key": "typical_analysis",
+                    "type": "key_value",
+                    "title": "Typical Analysis",
+                    "content": {
+                        "items": [
+                            {
+                                "key": item["label"],
+                                "value": item["value"],
+                            }
+                            for item in typical_analysis
+                        ]
+                    },
+                }
             )
 
-        for row in product_data.get("feeding_guidelines", []):
-            ProductFeedingGuidelineRow.objects.create(
-                product=product,
-                pet_weight=row["pet_weight"],
-                active_lifestyle=row.get("active_lifestyle", ""),
-                sedentary_lifestyle=row.get("sedentary_lifestyle", ""),
-                overweight=row.get("overweight", ""),
+        feeding_guidelines = product_data.get("feeding_guidelines", [])
+        if feeding_guidelines:
+            blocks.append(
+                {
+                    "key": "feeding_guidelines",
+                    "type": "table",
+                    "title": "Feeding Guidelines",
+                    "content": {
+                        "columns": [
+                            {"id": "pet_weight", "title": "Pet weight"},
+                            {"id": "active_lifestyle", "title": "Active lifestyle"},
+                            {
+                                "id": "sedentary_lifestyle",
+                                "title": "Sedentary lifestyle",
+                            },
+                            {"id": "overweight", "title": "Overweight"},
+                        ],
+                        "rows": feeding_guidelines,
+                    },
+                }
             )
+
+        return blocks
 
     def attach_variant_attribute(self, variant, attribute_name, raw_value):
         if raw_value is None:
@@ -1321,21 +1302,13 @@ class Command(BaseCommand):
             self.stdout.write(f"   {url}")
 
         self.stdout.write("\n📊 Statistics:")
-        total_categories = Category.objects.count()
-        total_animal_types = AnimalType.objects.count()
-        total_brands = Brand.objects.count()
-        total_products = Product.objects.count()
-        total_variants = ProductVariant.objects.count()
-        total_reviews = ProductReview.objects.count()
-        total_users = Customer.objects.count()
-
-        self.stdout.write(f"   Total animal types: {total_animal_types}")
-        self.stdout.write(f"   Total categories: {total_categories}")
-        self.stdout.write(f"   Total brands: {total_brands}")
-        self.stdout.write(f"   Total products: {total_products}")
-        self.stdout.write(f"   Total variants: {total_variants}")
-        self.stdout.write(f"   Total reviews: {total_reviews}")
-        self.stdout.write(f"   Total users: {total_users}")
+        self.stdout.write(f"   Total animal types: {AnimalType.objects.count()}")
+        self.stdout.write(f"   Total categories: {Category.objects.count()}")
+        self.stdout.write(f"   Total brands: {Brand.objects.count()}")
+        self.stdout.write(f"   Total products: {Product.objects.count()}")
+        self.stdout.write(f"   Total variants: {ProductVariant.objects.count()}")
+        self.stdout.write(f"   Total reviews: {ProductReview.objects.count()}")
+        self.stdout.write(f"   Total users: {Customer.objects.count()}")
 
         self.stdout.write("\n🔗 Sample product for testing:")
         if sample_product:
@@ -1346,6 +1319,7 @@ class Command(BaseCommand):
         self.stdout.write("\n💡 content_blocks structure now looks like:")
         self.stdout.write('   "content_blocks": [')
         self.stdout.write("       {")
+        self.stdout.write('           "key": "characteristics",')
         self.stdout.write('           "type": "key_value",')
         self.stdout.write('           "title": "Characteristics",')
         self.stdout.write('           "content": {')
@@ -1354,32 +1328,6 @@ class Command(BaseCommand):
         self.stdout.write('                   {"key": "Brand", "value": "Royal Canin"}')
         self.stdout.write("               ]")
         self.stdout.write("           }")
-        self.stdout.write("       },")
-        self.stdout.write("       {")
-        self.stdout.write('           "type": "table",')
-        self.stdout.write('           "title": "Feeding Guidelines",')
-        self.stdout.write('           "content": {')
-        self.stdout.write('               "columns": [...],')
-        self.stdout.write('               "rows": [...]')
-        self.stdout.write("           }")
-        self.stdout.write("       }")
-        self.stdout.write("   ]")
-
-        self.stdout.write("\n💡 Variant structure now looks like:")
-        self.stdout.write('   "variants": [')
-        self.stdout.write("       {")
-        self.stdout.write('           "id": "...",')
-        self.stdout.write('           "sku": "DOG-FOOD-2KG",')
-        self.stdout.write('           "attributes": {')
-        self.stdout.write(
-            '               "Size": {"id": "...", "value": "2kg", "slug": "2kg"},'
-        )
-        self.stdout.write(
-            '               "Flavor": {"id": "...", "value": "Chicken", "slug": "chicken"}'
-        )
-        self.stdout.write("           },")
-        self.stdout.write('           "price": "25.99",')
-        self.stdout.write('           "stock": 50')
         self.stdout.write("       }")
         self.stdout.write("   ]")
 

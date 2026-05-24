@@ -68,12 +68,6 @@ def get_token_for_user(user):
 
 
 def get_request_query_params(request):
-    """
-    Return query params for both DRF Request and Django HttpRequest.
-
-    DRF Request has query_params.
-    Django HttpRequest has GET.
-    """
     query_params = getattr(request, "query_params", None)
 
     if query_params is not None:
@@ -83,12 +77,6 @@ def get_request_query_params(request):
 
 
 def get_active_variant_queryset():
-    """
-    Shared optimized queryset for active product variants.
-
-    Variant options such as size, weight, color or package size
-    are loaded through ProductVariantAttribute.
-    """
     return (
         ProductVariant.objects.filter(is_active=True)
         .prefetch_related(
@@ -102,11 +90,6 @@ def get_active_variant_queryset():
 
 
 def get_product_base_queryset():
-    """
-    Shared optimized queryset for product card/list responses.
-
-    Serializers will use obj.active_variants if it exists.
-    """
     return (
         Product.objects.filter(is_active=True)
         .select_related("brand", "category", "category__animal_type")
@@ -126,21 +109,7 @@ def get_product_base_queryset():
 
 
 def get_product_detail_queryset():
-    """
-    Shared optimized queryset for product detail response.
-
-    Includes:
-    - product card data;
-    - product images;
-    - active variants;
-    - variant attributes/images;
-    - reviews;
-    - structured product content sections.
-    """
     return get_product_base_queryset().prefetch_related(
-        "characteristics",
-        "typical_analysis_items",
-        "feeding_guideline_rows",
         Prefetch(
             "reviews",
             queryset=(
@@ -184,14 +153,7 @@ def get_category_by_path(animal_type_slug: str, category_path: str) -> Category:
 
 
 def get_descendant_category_ids(category: Category) -> list:
-    """
-    Return selected category id and all active descendant ids.
-
-    We query by parent explicitly instead of using category.children,
-    because static analyzers do not always understand Django reverse relations.
-    """
     category_ids = [category.id]
-
     children = Category.objects.filter(parent=category, is_active=True).only("id")
 
     for child in children:
@@ -335,19 +297,6 @@ class ProductPagination(PageNumberPagination):
 
 
 class ProductListView(generics.ListAPIView):
-    """
-    List all products with filtering, sorting and pagination.
-
-    Supports:
-    - category id filter;
-    - brand id filter;
-    - animal type slug filter;
-    - rating range;
-    - price range by active variants;
-    - stock availability;
-    - text search.
-    """
-
     permission_classes = [permissions.AllowAny]
     serializer_class = ProductCardSerializer
     pagination_class = ProductPagination
@@ -415,19 +364,6 @@ class ProductListView(generics.ListAPIView):
 
 
 class ProductDetailView(generics.RetrieveAPIView):
-    """
-    Retrieve detailed information about a specific product.
-
-    Includes:
-    - product data;
-    - product-level images;
-    - full variants;
-    - variant attributes;
-    - variant images;
-    - reviews;
-    - structured content blocks.
-    """
-
     permission_classes = [permissions.AllowAny]
     serializer_class = ProductDetailSerializer
     lookup_field = "id"
@@ -438,13 +374,6 @@ class ProductDetailView(generics.RetrieveAPIView):
 
 
 class DashboardView(APIView):
-    """
-    Dashboard sections:
-    1. New arrivals
-    2. Best sellers
-    3. Discounted products
-    """
-
     permission_classes = [permissions.AllowAny]
 
     def get(self, request):
@@ -536,17 +465,6 @@ class RelatedProductsView(generics.ListAPIView):
 
 
 class ProductSearchView(generics.ListAPIView):
-    """
-    Search products by text query.
-
-    Searches in:
-    - name;
-    - description;
-    - short_description;
-    - brand name;
-    - category name.
-    """
-
     permission_classes = [permissions.AllowAny]
     serializer_class = ProductCardSerializer
     pagination_class = ProductPagination
@@ -572,14 +490,6 @@ class ProductSearchView(generics.ListAPIView):
 
 
 class CategoryProductsView(generics.ListAPIView):
-    """
-    List products for category path.
-
-    By default includes products from selected category and all its subcategories.
-    To include only selected category, pass:
-    ?include_subcategories=false
-    """
-
     permission_classes = [permissions.AllowAny]
     serializer_class = ProductCardSerializer
     pagination_class = ProductPagination
@@ -613,23 +523,6 @@ class CategoryProductsView(generics.ListAPIView):
 
 
 class ProductImageUploadView(APIView):
-    """
-    Upload product or variant image to Cloudinary.
-
-    Required:
-    - product_id
-    - image
-
-    Optional:
-    - variant_id
-    - alt_text
-    - is_main
-    - display_order
-
-    If variant_id is provided, image is attached to this variant.
-    If variant_id is not provided, image is attached to product as common image.
-    """
-
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
 

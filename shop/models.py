@@ -237,6 +237,14 @@ PRODUCT_CONTENT_BLOCKS_SCHEMA = {
     "items": {
         "type": "dict",
         "keys": {
+            "key": {
+                "type": "string",
+                "title": "Key",
+                "helpText": (
+                    "Stable unique block key for frontend. "
+                    "Example: description, characteristics, feeding_guidelines."
+                ),
+            },
             "type": {
                 "type": "string",
                 "title": "Block type",
@@ -316,15 +324,37 @@ def validate_product_content_blocks(value):
     if not isinstance(value, list):
         raise ValidationError({"content_blocks": "Content blocks must be a list."})
 
+    seen_keys = set()
+
     for index, block in enumerate(value, start=1):
         if not isinstance(block, dict):
             raise ValidationError(
                 {"content_blocks": f"Block #{index} must be an object."}
             )
 
+        block_key = block.get("key")
         block_type = block.get("type")
         title = block.get("title")
         content = block.get("content")
+
+        if not isinstance(block_key, str) or not block_key.strip():
+            raise ValidationError(
+                {"content_blocks": f"Block #{index} must have a non-empty key."}
+            )
+
+        normalized_key = block_key.strip()
+
+        if normalized_key in seen_keys:
+            raise ValidationError(
+                {
+                    "content_blocks": (
+                        f'Content block key "{normalized_key}" is duplicated. '
+                        "Keys must be unique within one product."
+                    )
+                }
+            )
+
+        seen_keys.add(normalized_key)
 
         if block_type not in PRODUCT_CONTENT_BLOCK_TYPES:
             raise ValidationError(
@@ -525,9 +555,9 @@ class Product(models.Model):
         blank=True,
         verbose_name="Advanced custom content blocks",
         help_text=(
-            "Optional advanced blocks for non-standard product page content. "
-            "Common sections such as Characteristics, Typical analysis and "
-            "Feeding guidelines should be filled in their dedicated admin tables."
+            "Main way to manage custom product page content. "
+            "Each block must have a unique key within this product. "
+            "Supported block types: text, key_value, table."
         ),
     )
 

@@ -14,7 +14,6 @@ from shop.models import (
     Product,
     ProductAttribute,
     ProductAttributeValue,
-    ProductCharacteristic,
     ProductImage,
     ProductVariant,
     ProductVariantAttribute,
@@ -135,14 +134,6 @@ class Command(BaseCommand):
         self.stdout.write(f"Skipped rows: {skipped_rows}")
 
     def delete_existing_mock_products(self):
-        """
-        Deletes products that were imported as mock data.
-
-        We identify them by variants with SKU starting with MOCK-.
-        Since ProductImage, ProductVariant, ProductVariantAttribute and structured
-        content section rows are linked by CASCADE, deleting Product will clean
-        related mock data too.
-        """
         product_ids = (
             Product.objects.filter(variants__sku__startswith="MOCK-")
             .values_list("id", flat=True)
@@ -185,7 +176,7 @@ class Command(BaseCommand):
             main_image=main_image,
         )
 
-        self.sync_product_characteristics(
+        self.sync_product_content_blocks(
             product=product,
             row=row,
             brand=brand,
@@ -255,12 +246,6 @@ class Command(BaseCommand):
         description,
         main_image,
     ):
-        """
-        Reuse product if same name + brand + category already exists.
-
-        This allows CSV to contain several rows for the same product,
-        where each row represents a separate variant.
-        """
         product = Product.objects.filter(
             name=name,
             brand=brand,
@@ -298,51 +283,46 @@ class Command(BaseCommand):
 
         return product, True
 
-    def sync_product_characteristics(self, product, row, brand, category):
-        """
-        Populate the admin-friendly Characteristics section from CSV data.
-
-        We intentionally do not create Typical Analysis or Feeding Guidelines here,
-        because the current Mockaroo CSV does not contain reliable columns for them.
-        """
-        values = {
-            "Animal": category.animal_type.name,
-            "Brand": brand.name,
-            "Product group": category.name,
-        }
+    def sync_product_content_blocks(self, product, row, brand, category):
+        items = [
+            {
+                "key": "Animal",
+                "value": category.animal_type.name,
+            },
+            {
+                "key": "Brand",
+                "value": brand.name,
+            },
+            {
+                "key": "Product group",
+                "value": category.name,
+            },
+        ]
 
         for column_name, attribute_name in ATTRIBUTE_COLUMNS.items():
             value = self.clean_value(row.get(column_name))
             if value:
-                values[attribute_name] = value
-
-        for label, value in values.items():
-            characteristic = (
-                ProductCharacteristic.objects.filter(
-                    product=product,
-                    label=label,
+                items.append(
+                    {
+                        "key": attribute_name,
+                        "value": value,
+                    }
                 )
-                .order_by("created_at")
-                .first()
-            )
 
-            if characteristic:
-                if characteristic.value != value:
-                    characteristic.value = value
-                    characteristic.save(update_fields=["value"])
-            else:
-                ProductCharacteristic.objects.create(
-                    product=product,
-                    label=label,
-                    value=value,
-                )
+        product.content_blocks = [
+            {
+                "key": "characteristics",
+                "type": "key_value",
+                "title": "Characteristics",
+                "content": {
+                    "items": items,
+                },
+            }
+        ]
+
+        product.save(update_fields=["content_blocks", "updated_at"])
 
     def ensure_product_image(self, product, image_url, alt_text, is_main=False):
-        """
-        Create product-level image only if the same image does not already exist.
-
-        Product-level image has variant=None.
-        """
         exists = ProductImage.objects.filter(
             product=product,
             variant__isnull=True,
@@ -371,11 +351,6 @@ class Command(BaseCommand):
         return True
 
     def create_variant_image(self, product, variant, image_url, alt_text, is_main=True):
-        """
-        Create variant-specific image.
-
-        This lets frontend switch image when user selects another variant.
-        """
         if is_main:
             ProductImage.objects.filter(
                 product=product,
