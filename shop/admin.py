@@ -1,12 +1,12 @@
 from decimal import Decimal, ROUND_HALF_UP
 
-import nested_admin
 from django import forms
 from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin
 from django.db.models import Count, DecimalField, ExpressionWrapper, F, Q, Sum
 from django.forms.models import BaseInlineFormSet
 from django.utils.html import format_html
+from unfold.admin import ModelAdmin, StackedInline, TabularInline
 
 from .models import (
     AnimalType,
@@ -125,6 +125,7 @@ class ProductVariantForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
         self.fields["price"].required = False
 
         instance = self.instance
@@ -210,6 +211,38 @@ class ProductVariantAttributeForm(forms.ModelForm):
             )
 
         return cleaned_data
+
+
+class ProductVariantAttributeInlineFormSet(BaseInlineFormSet):
+    def clean(self):
+        super().clean()
+
+        seen_attributes = {}
+
+        for form in self.forms:
+            if not hasattr(form, "cleaned_data"):
+                continue
+
+            cleaned_data = form.cleaned_data
+
+            if cleaned_data.get("DELETE"):
+                continue
+
+            attribute = cleaned_data.get("attribute")
+
+            if not attribute:
+                continue
+
+            if attribute.id in seen_attributes:
+                raise forms.ValidationError(
+                    (
+                        f"Variant can have only one value for attribute "
+                        f'"{attribute.name}". Create another variant if you need '
+                        f"another {attribute.name}."
+                    )
+                )
+
+            seen_attributes[attribute.id] = attribute
 
 
 class ProductImageInlineFormSet(BaseInlineFormSet):
@@ -306,11 +339,11 @@ class ProductVariantImageInlineFormSet(BaseInlineFormSet):
         return image
 
 
-class ProductVariantAttributeInline(nested_admin.NestedTabularInline):
+class ProductVariantAttributeInline(TabularInline):
     model = ProductVariantAttribute
     form = ProductVariantAttributeForm
+    formset = ProductVariantAttributeInlineFormSet
     extra = 1
-    inline_classes = ("collapse", "open")
     autocomplete_fields = ("attribute",)
     fields = ("attribute", "value")
     ordering = ("attribute__display_order", "value__display_order")
@@ -319,12 +352,11 @@ class ProductVariantAttributeInline(nested_admin.NestedTabularInline):
     verbose_name_plural = "Variant attributes"
 
 
-class ProductVariantImagesInline(nested_admin.NestedTabularInline):
+class ProductVariantImagesInline(TabularInline):
     model = ProductImage
     formset = ProductVariantImageInlineFormSet
     fk_name = "variant"
     extra = 1
-    inline_classes = ("collapse", "open")
     fields = (
         "image_url",
         "alt_text",
@@ -345,18 +377,21 @@ class ProductVariantImagesInline(nested_admin.NestedTabularInline):
     preview.short_description = "Preview"
 
 
-class ProductVariantsInline(nested_admin.NestedStackedInline):
+class ProductVariantsInline(StackedInline):
+    """
+    Product variants shown on Product page.
+
+    Important:
+    With Unfold we keep this inline as a normal first-level inline.
+    Variant attributes and variant images are edited through the variant
+    change page via the "Change" link.
+    """
+
     model = ProductVariant
     form = ProductVariantForm
     extra = 0
     show_change_link = True
-    classes = ("collapse",)
-    inline_classes = ("collapse", "open")
     autocomplete_fields = ("badges",)
-    inlines = (
-        ProductVariantAttributeInline,
-        ProductVariantImagesInline,
-    )
     readonly_fields = (
         "has_discount_display",
         "discount_percentage_display",
@@ -364,6 +399,8 @@ class ProductVariantsInline(nested_admin.NestedStackedInline):
         "updated_at",
     )
     ordering = ("-is_default", "price", "id")
+    verbose_name = "Product variant"
+    verbose_name_plural = "Product variants"
 
     fieldsets = (
         (
@@ -411,11 +448,11 @@ class ProductVariantsInline(nested_admin.NestedStackedInline):
     discount_percentage_display.short_description = "Discount %"
 
 
-class ProductImagesInline(nested_admin.NestedTabularInline):
+class ProductImagesInline(TabularInline):
     model = ProductImage
     formset = ProductImageInlineFormSet
+    fk_name = "product"
     extra = 1
-    inline_classes = ("collapse", "open")
     fields = (
         "image_url",
         "alt_text",
@@ -439,7 +476,7 @@ class ProductImagesInline(nested_admin.NestedTabularInline):
     preview.short_description = "Preview"
 
 
-class CartItemsInline(admin.TabularInline):
+class CartItemsInline(TabularInline):
     model = CartItem
     extra = 0
     autocomplete_fields = ("variant",)
@@ -458,7 +495,7 @@ class CustomerAdmin(UserAdmin):
 
 
 @admin.register(AnimalType)
-class AnimalTypeAdmin(admin.ModelAdmin):
+class AnimalTypeAdmin(ModelAdmin):
     list_display = ("name", "is_active", "category_count", "product_count")
     search_fields = ("name", "slug")
     list_filter = ("is_active",)
@@ -492,7 +529,7 @@ class AnimalTypeAdmin(admin.ModelAdmin):
 
 
 @admin.register(Category)
-class CategoryAdmin(admin.ModelAdmin):
+class CategoryAdmin(ModelAdmin):
     form = CategoryForm
     list_display = (
         "name",
@@ -528,7 +565,7 @@ class CategoryAdmin(admin.ModelAdmin):
 
 
 @admin.register(Brand)
-class BrandAdmin(admin.ModelAdmin):
+class BrandAdmin(ModelAdmin):
     list_display = ("name", "is_active", "product_count", "logo")
     list_filter = ("is_active",)
     search_fields = ("name", "slug")
@@ -558,7 +595,7 @@ class BrandAdmin(admin.ModelAdmin):
 
 
 @admin.register(Badge)
-class BadgeAdmin(admin.ModelAdmin):
+class BadgeAdmin(ModelAdmin):
     list_display = ("label", "slug", "is_active", "color_preview", "created_at")
     list_filter = ("is_active",)
     search_fields = ("name", "label", "slug")
@@ -575,7 +612,7 @@ class BadgeAdmin(admin.ModelAdmin):
 
 
 @admin.register(Product)
-class ProductAdmin(nested_admin.NestedModelAdmin):
+class ProductAdmin(ModelAdmin):
     list_display = (
         "name",
         "brand",
@@ -643,7 +680,7 @@ class ProductAdmin(nested_admin.NestedModelAdmin):
                         "min_price_display",
                         "max_price_display",
                     ),
-                    ("in_stock_display",),
+                    "in_stock_display",
                     "main_image",
                 )
             },
@@ -717,7 +754,7 @@ class ProductAdmin(nested_admin.NestedModelAdmin):
 
 
 @admin.register(ProductVariant)
-class ProductVariantAdmin(nested_admin.NestedModelAdmin):
+class ProductVariantAdmin(ModelAdmin):
     form = ProductVariantForm
 
     list_display = (
@@ -820,7 +857,7 @@ class ProductVariantAdmin(nested_admin.NestedModelAdmin):
 
 
 @admin.register(ProductVariantAttribute)
-class ProductVariantAttributeAdmin(admin.ModelAdmin):
+class ProductVariantAttributeAdmin(ModelAdmin):
     form = ProductVariantAttributeForm
 
     list_display = ("variant", "attribute", "value")
@@ -837,7 +874,7 @@ class ProductVariantAttributeAdmin(admin.ModelAdmin):
 
 
 @admin.register(ProductAttribute)
-class ProductAttributeAdmin(admin.ModelAdmin):
+class ProductAttributeAdmin(ModelAdmin):
     list_display = ("name", "slug", "filterable", "display_order")
     list_filter = ("filterable",)
     search_fields = ("name", "slug")
@@ -847,7 +884,7 @@ class ProductAttributeAdmin(admin.ModelAdmin):
 
 
 @admin.register(ProductAttributeValue)
-class ProductAttributeValueAdmin(admin.ModelAdmin):
+class ProductAttributeValueAdmin(ModelAdmin):
     list_display = ("attribute", "value", "slug", "display_order")
     list_select_related = ("attribute",)
     autocomplete_fields = ("attribute",)
@@ -856,7 +893,7 @@ class ProductAttributeValueAdmin(admin.ModelAdmin):
 
 
 @admin.register(ProductImage)
-class ProductImageAdmin(admin.ModelAdmin):
+class ProductImageAdmin(ModelAdmin):
     list_display = (
         "product",
         "variant",
@@ -893,7 +930,7 @@ class ProductImageAdmin(admin.ModelAdmin):
 
 
 @admin.register(ProductReview)
-class ProductReviewAdmin(admin.ModelAdmin):
+class ProductReviewAdmin(ModelAdmin):
     list_display = (
         "product",
         "user",
@@ -952,7 +989,7 @@ class ProductReviewAdmin(admin.ModelAdmin):
 
 
 @admin.register(Cart)
-class CartAdmin(admin.ModelAdmin):
+class CartAdmin(ModelAdmin):
     list_display = ("user", "total_items", "total_price", "created_at")
     inlines = (CartItemsInline,)
     search_fields = ("user__email", "user__first_name", "user__last_name")
@@ -987,7 +1024,7 @@ class CartAdmin(admin.ModelAdmin):
 
 
 @admin.register(CartItem)
-class CartItemAdmin(admin.ModelAdmin):
+class CartItemAdmin(ModelAdmin):
     list_display = ("cart", "variant", "quantity", "total_price", "added_at")
     autocomplete_fields = ("cart", "variant")
     search_fields = ("cart__user__email", "variant__sku", "variant__product__name")
