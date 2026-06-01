@@ -938,10 +938,10 @@ class ProductVariant(models.Model):
         Hybrid SKU approach:
         - if admin provides SKU manually, we keep it;
         - if SKU is empty, backend generates stable SKU.
-
-        We intentionally do not depend on inline attributes here,
-        because variant attributes are usually saved after variant in Django admin.
         """
+        if not self.id:
+            self.id = uuid.uuid4()
+
         product_part = slugify(self.product.slug or self.product.name or "product")
         product_part = product_part.replace("-", "").upper()[:24]
 
