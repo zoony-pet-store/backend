@@ -389,15 +389,6 @@ class ProductVariantImagesInline(TabularInline):
 
 
 class ProductVariantsInline(StackedInline):
-    """
-    Product variants shown on Product page.
-
-    Important:
-    With Unfold we keep this inline as a normal first-level inline.
-    Variant attributes and variant images are edited through the variant
-    change page via the "Change" link.
-    """
-
     model = ProductVariant
     form = ProductVariantForm
     extra = 0
@@ -418,10 +409,16 @@ class ProductVariantsInline(StackedInline):
             "Variant",
             {
                 "fields": (
-                    ("sku", "is_active", "is_default"),
+                    "sku",
+                    "is_active",
+                    "is_default",
                     "stock",
-                    ("price", "old_price", "discount_percent", "cost_price"),
-                    ("has_discount_display", "discount_percentage_display"),
+                    "price",
+                    "old_price",
+                    "discount_percent",
+                    "cost_price",
+                    "has_discount_display",
+                    "discount_percentage_display",
                     "auto_badges_enabled",
                     "badges",
                 )
@@ -675,8 +672,11 @@ class ProductAdmin(ModelAdmin):
             "Basic info",
             {
                 "fields": (
-                    ("name", "slug", "is_active"),
-                    ("brand", "category"),
+                    "name",
+                    "slug",
+                    "is_active",
+                    "brand",
+                    "category",
                     "badges",
                     "short_description",
                     "description",
@@ -687,12 +687,11 @@ class ProductAdmin(ModelAdmin):
             "Catalog info",
             {
                 "fields": (
-                    ("rating", "review_count"),
-                    (
-                        "display_price_display",
-                        "min_price_display",
-                        "max_price_display",
-                    ),
+                    "rating",
+                    "review_count",
+                    "display_price_display",
+                    "min_price_display",
+                    "max_price_display",
                     "in_stock_display",
                     "main_image",
                 )
@@ -811,10 +810,16 @@ class ProductVariantAdmin(ModelAdmin):
             {
                 "fields": (
                     "product",
-                    ("sku", "is_active", "is_default"),
+                    "sku",
+                    "is_active",
+                    "is_default",
                     "stock",
-                    ("price", "old_price", "discount_percent", "cost_price"),
-                    ("has_discount_display", "discount_percentage_display"),
+                    "price",
+                    "old_price",
+                    "discount_percent",
+                    "cost_price",
+                    "has_discount_display",
+                    "discount_percentage_display",
                     "auto_badges_enabled",
                     "badges",
                 )
@@ -966,8 +971,11 @@ class ProductReviewAdmin(ModelAdmin):
             "Review",
             {
                 "fields": (
-                    ("product", "user"),
-                    ("rating", "is_verified", "is_active"),
+                    "product",
+                    "user",
+                    "rating",
+                    "is_verified",
+                    "is_active",
                     "title",
                     "comment",
                 )
