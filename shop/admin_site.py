@@ -1,7 +1,7 @@
-from django.contrib.admin import AdminSite
+from unfold.sites import UnfoldAdminSite
 
 
-class EcommerceAdminSite(AdminSite):
+class EcommerceAdminSite(UnfoldAdminSite):
     site_header = "E-commerce Admin"
     site_title = "E-commerce"
     index_title = "Administration"

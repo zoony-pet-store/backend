@@ -42,6 +42,7 @@ CSRF_TRUSTED_ORIGINS = [
 ]
 
 INSTALLED_APPS = [
+    "unfold.apps.BasicAppConfig",
     "nested_admin",
     "django_jsonform",
     "shop.admin_config.EcommerceAdminConfig",
