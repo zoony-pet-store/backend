@@ -6,6 +6,7 @@ from django.contrib.auth.admin import UserAdmin
 from django.db.models import Count, DecimalField, ExpressionWrapper, F, Q, Sum
 from django.forms.models import BaseInlineFormSet
 from django.utils.html import format_html
+from django_jsonform.widgets import JSONFormWidget
 from unfold.admin import ModelAdmin, StackedInline, TabularInline
 
 from .models import (
@@ -17,6 +18,7 @@ from .models import (
     Category,
     Customer,
     Product,
+    PRODUCT_CONTENT_BLOCKS_SCHEMA,
     ProductAttribute,
     ProductAttributeValue,
     ProductImage,
@@ -77,6 +79,15 @@ class CategoryForm(forms.ModelForm):
             node = node.parent
 
         return cleaned
+
+
+class ProductForm(forms.ModelForm):
+    class Meta:
+        model = Product
+        fields = "__all__"
+        widgets = {
+            "content_blocks": JSONFormWidget(schema=PRODUCT_CONTENT_BLOCKS_SCHEMA),
+        }
 
 
 class ProductVariantForm(forms.ModelForm):
@@ -613,6 +624,8 @@ class BadgeAdmin(ModelAdmin):
 
 @admin.register(Product)
 class ProductAdmin(ModelAdmin):
+    form = ProductForm
+
     list_display = (
         "name",
         "brand",
