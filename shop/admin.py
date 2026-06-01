@@ -54,6 +54,13 @@ def unset_other_main_images(image):
         ).exclude(pk=image.pk).update(is_main=False)
 
 
+def sync_product_variants_auto_badges(product):
+    variants = product.variants.all().prefetch_related("badges")
+
+    for variant in variants:
+        variant.sync_auto_price_badges()
+
+
 class CategoryForm(forms.ModelForm):
     class Meta:
         model = Category
@@ -104,6 +111,15 @@ class ProductVariantForm(forms.ModelForm):
             ),
             "cost_price": (
                 "Internal purchase/cost price. Customers do not see this value."
+            ),
+            "auto_badges_enabled": (
+                "If enabled, Discount and Sale badges are managed automatically "
+                "based on Old price and Price. Disable this if you want to manage "
+                "variant badges fully manually."
+            ),
+            "badges": (
+                "Manual badges for this variant. Discount/Sale can be auto-managed "
+                "when Auto badges enabled is checked."
             ),
         }
 
@@ -358,6 +374,7 @@ class ProductVariantsInline(nested_admin.NestedStackedInline):
                     "stock",
                     ("price", "old_price", "discount_percent", "cost_price"),
                     ("has_discount_display", "discount_percentage_display"),
+                    "auto_badges_enabled",
                     "badges",
                 )
             },
@@ -673,6 +690,10 @@ class ProductAdmin(nested_admin.NestedModelAdmin):
             )
         )
 
+    def save_related(self, request, form, formsets, change):
+        super().save_related(request, form, formsets, change)
+        sync_product_variants_auto_badges(form.instance)
+
     def display_price_display(self, obj):
         return obj.display_price
 
@@ -707,12 +728,19 @@ class ProductVariantAdmin(nested_admin.NestedModelAdmin):
         "cost_price",
         "stock",
         "is_default",
+        "auto_badges_enabled",
         "has_discount_display",
         "discount_percentage_display",
         "is_active",
     )
     list_select_related = ("product", "product__brand", "product__category")
-    list_filter = ("is_active", "is_default", "product__brand", "product__category")
+    list_filter = (
+        "is_active",
+        "is_default",
+        "auto_badges_enabled",
+        "product__brand",
+        "product__category",
+    )
     autocomplete_fields = ("product", "badges")
     search_fields = ("sku", "product__name", "product__brand__name")
     readonly_fields = (
@@ -737,6 +765,7 @@ class ProductVariantAdmin(nested_admin.NestedModelAdmin):
                     "stock",
                     ("price", "old_price", "discount_percent", "cost_price"),
                     ("has_discount_display", "discount_percentage_display"),
+                    "auto_badges_enabled",
                     "badges",
                 )
             },
@@ -769,6 +798,10 @@ class ProductVariantAdmin(nested_admin.NestedModelAdmin):
                 "variant_attributes__value",
             )
         )
+
+    def save_related(self, request, form, formsets, change):
+        super().save_related(request, form, formsets, change)
+        form.instance.sync_auto_price_badges()
 
     def has_discount_display(self, obj):
         if not obj.pk:

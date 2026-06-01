@@ -231,6 +231,29 @@ class Badge(models.Model):
 PRODUCT_CONTENT_BLOCK_TYPES = {"text", "key_value", "table"}
 
 
+AUTO_DISCOUNT_BADGE_SLUG = "discount"
+AUTO_SALE_BADGE_SLUG = "sale"
+AUTO_SALE_MIN_PERCENTAGE = 20
+
+
+AUTO_PRICE_BADGE_DEFINITIONS = {
+    AUTO_DISCOUNT_BADGE_SLUG: {
+        "name": "discount",
+        "slug": "discount",
+        "label": "Discount",
+        "color": "#FFFFFF",
+        "background_color": "#DC3545",
+    },
+    AUTO_SALE_BADGE_SLUG: {
+        "name": "sale",
+        "slug": "sale",
+        "label": "Sale",
+        "color": "#FFFFFF",
+        "background_color": "#FF6B6B",
+    },
+}
+
+
 PRODUCT_CONTENT_BLOCKS_SCHEMA = {
     "type": "array",
     "title": "Advanced custom content blocks",
@@ -835,6 +858,48 @@ class ProductAttributeValue(models.Model):
         return f"{self.attribute.name}: {self.value}"
 
 
+def get_or_create_auto_price_badge(slug):
+    badge_data = AUTO_PRICE_BADGE_DEFINITIONS[slug]
+
+    badge, _ = Badge.objects.get_or_create(
+        slug=badge_data["slug"],
+        defaults={
+            "name": badge_data["name"],
+            "label": badge_data["label"],
+            "color": badge_data["color"],
+            "background_color": badge_data["background_color"],
+            "is_active": True,
+        },
+    )
+
+    updated_fields = []
+
+    if badge.name != badge_data["name"]:
+        badge.name = badge_data["name"]
+        updated_fields.append("name")
+
+    if badge.label != badge_data["label"]:
+        badge.label = badge_data["label"]
+        updated_fields.append("label")
+
+    if badge.color != badge_data["color"]:
+        badge.color = badge_data["color"]
+        updated_fields.append("color")
+
+    if badge.background_color != badge_data["background_color"]:
+        badge.background_color = badge_data["background_color"]
+        updated_fields.append("background_color")
+
+    if not badge.is_active:
+        badge.is_active = True
+        updated_fields.append("is_active")
+
+    if updated_fields:
+        badge.save(update_fields=updated_fields)
+
+    return badge
+
+
 class ProductVariant(models.Model):
     """
     Concrete SKU / physical item.
@@ -877,6 +942,14 @@ class ProductVariant(models.Model):
     description = models.TextField(blank=True)
     short_description = models.TextField(blank=True)
     badges = models.ManyToManyField(Badge, blank=True, related_name="variants")
+
+    auto_badges_enabled = models.BooleanField(
+        default=True,
+        help_text=(
+            "If enabled, Discount and Sale badges are managed automatically "
+            "based on old_price and price."
+        ),
+    )
 
     is_default = models.BooleanField(default=False)
 
@@ -933,6 +1006,8 @@ class ProductVariant(models.Model):
         self.full_clean()
         super().save(*args, **kwargs)
 
+        self.sync_auto_price_badges()
+
     def generate_sku(self):
         """
         Hybrid SKU approach:
@@ -946,6 +1021,29 @@ class ProductVariant(models.Model):
         product_part = product_part.replace("-", "").upper()[:24]
 
         return f"{product_part}-{self.id.hex[:8].upper()}"
+
+    def sync_auto_price_badges(self):
+        """
+        Synchronize DB-backed automatic price badges.
+
+        Only Discount and Sale are managed automatically.
+        New, Bestseller and Trending should be managed manually in admin.
+        """
+        if not self.auto_badges_enabled:
+            return
+
+        discount_badge = get_or_create_auto_price_badge(AUTO_DISCOUNT_BADGE_SLUG)
+        sale_badge = get_or_create_auto_price_badge(AUTO_SALE_BADGE_SLUG)
+
+        if self.has_discount:
+            self.badges.add(discount_badge)
+        else:
+            self.badges.remove(discount_badge)
+
+        if self.has_discount and self.discount_percentage >= AUTO_SALE_MIN_PERCENTAGE:
+            self.badges.add(sale_badge)
+        else:
+            self.badges.remove(sale_badge)
 
     @property
     def has_discount(self):

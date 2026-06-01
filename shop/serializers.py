@@ -1,4 +1,3 @@
-from datetime import timedelta
 import logging
 import random
 
@@ -7,7 +6,6 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.core.validators import validate_email
 from django.db.models import Prefetch
-from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from google.auth.transport import requests
 from google.oauth2 import id_token
@@ -600,6 +598,16 @@ class ProductCardSerializer(serializers.ModelSerializer):
 
         return variants[0]
 
+    def _serialize_badge(self, badge):
+        return {
+            "id": str(badge.id),
+            "name": badge.name,
+            "slug": badge.slug,
+            "label": badge.label,
+            "color": badge.color,
+            "background_color": badge.background_color,
+        }
+
     def get_brand(self, obj):
         if not obj.brand:
             return None
@@ -670,110 +678,29 @@ class ProductCardSerializer(serializers.ModelSerializer):
         return None
 
     def get_badges(self, obj):
-        badges_by_name = {}
+        """
+        Return only DB-backed badges.
+
+        Important:
+        We do not generate virtual badges here anymore.
+        Discount/Sale badges are automatically attached to ProductVariant.badges
+        in ProductVariant.sync_auto_price_badges().
+        New/Bestseller/Trending should be managed manually in admin.
+        """
+        badges_by_slug = {}
 
         for badge in obj.badges.all():
-            if not badge.is_active:
-                continue
-
-            badges_by_name[badge.name] = {
-                "id": badge.id,
-                "name": badge.name,
-                "slug": badge.slug,
-                "label": badge.label,
-                "color": badge.color,
-                "background_color": badge.background_color,
-            }
+            if badge.is_active:
+                badges_by_slug[badge.slug] = self._serialize_badge(badge)
 
         default_variant = self._get_default_variant(obj)
 
         if default_variant:
             for badge in default_variant.badges.all():
-                if not badge.is_active:
-                    continue
+                if badge.is_active:
+                    badges_by_slug[badge.slug] = self._serialize_badge(badge)
 
-                badges_by_name[badge.name] = {
-                    "id": badge.id,
-                    "name": badge.name,
-                    "slug": badge.slug,
-                    "label": badge.label,
-                    "color": badge.color,
-                    "background_color": badge.background_color,
-                }
-
-        if obj.rating >= 4.5 and obj.review_count >= 10:
-            badges_by_name.setdefault(
-                "bestseller",
-                {
-                    "id": None,
-                    "name": "bestseller",
-                    "slug": "bestseller",
-                    "label": "Bestseller",
-                    "color": "#000000",
-                    "background_color": "#FFD700",
-                },
-            )
-
-        if obj.created_at > timezone.now() - timedelta(days=30):
-            badges_by_name.setdefault(
-                "new",
-                {
-                    "id": None,
-                    "name": "new",
-                    "slug": "new",
-                    "label": "New",
-                    "color": "#FFFFFF",
-                    "background_color": "#28A745",
-                },
-            )
-
-        variants = self._get_active_variants(obj)
-        discounted_variants = [variant for variant in variants if variant.has_discount]
-
-        if discounted_variants:
-            badges_by_name.setdefault(
-                "discount",
-                {
-                    "id": None,
-                    "name": "discount",
-                    "slug": "discount",
-                    "label": "Discount",
-                    "color": "#FFFFFF",
-                    "background_color": "#DC3545",
-                },
-            )
-
-            max_discount = max(
-                variant.discount_percentage for variant in discounted_variants
-            )
-
-            if max_discount >= 20:
-                badges_by_name.setdefault(
-                    "sale",
-                    {
-                        "id": None,
-                        "name": "sale",
-                        "slug": "sale",
-                        "label": f"Sale {max_discount}%",
-                        "color": "#FFFFFF",
-                        "background_color": "#FF6B6B",
-                    },
-                )
-
-        if obj.review_count >= 20 and obj.rating >= 4.0:
-            badges_by_name.setdefault(
-                "trending",
-                {
-                    "id": None,
-                    "name": "trending",
-                    "slug": "trending",
-                    "label": "Trending",
-                    "color": "#FFFFFF",
-                    "background_color": "#FD7E14",
-                },
-            )
-
-        return list(badges_by_name.values())
+        return list(badges_by_slug.values())
 
     def get_available_attributes(self, obj):
         attributes = {}
