@@ -365,10 +365,14 @@ class BrandMinimalSerializer(serializers.ModelSerializer):
 
 
 class BadgeSerializer(serializers.ModelSerializer):
+    id = serializers.SerializerMethodField()
+
     class Meta:
         model = Badge
         fields = ["id", "name", "slug", "label", "color", "background_color"]
-        read_only_fields = ["id"]
+
+    def get_id(self, obj):
+        return str(obj.id)
 
 
 class ProductImageSerializer(serializers.ModelSerializer):
@@ -539,7 +543,11 @@ class ProductCardSerializer(serializers.ModelSerializer):
     old_price = serializers.SerializerMethodField()
     discount_percentage = serializers.SerializerMethodField()
     in_stock = serializers.BooleanField(read_only=True)
+
     badges = serializers.SerializerMethodField()
+    product_badges = serializers.SerializerMethodField()
+    default_variant_badges = serializers.SerializerMethodField()
+
     variants = serializers.SerializerMethodField()
     available_attributes = serializers.SerializerMethodField()
     default_variant_id = serializers.SerializerMethodField()
@@ -560,6 +568,8 @@ class ProductCardSerializer(serializers.ModelSerializer):
             "rating",
             "review_count",
             "badges",
+            "product_badges",
+            "default_variant_badges",
             "available_attributes",
             "default_variant_id",
             "variants",
@@ -607,6 +617,17 @@ class ProductCardSerializer(serializers.ModelSerializer):
             "color": badge.color,
             "background_color": badge.background_color,
         }
+
+    def _get_unique_serialized_badges(self, badges):
+        badges_by_slug = {}
+
+        for badge in badges:
+            if not badge.is_active:
+                continue
+
+            badges_by_slug[badge.slug] = self._serialize_badge(badge)
+
+        return list(badges_by_slug.values())
 
     def get_brand(self, obj):
         if not obj.brand:
@@ -677,28 +698,46 @@ class ProductCardSerializer(serializers.ModelSerializer):
 
         return None
 
+    def get_product_badges(self, obj):
+        """
+        Badges attached directly to Product in admin.
+
+        Example:
+        New, Bestseller, Recommended.
+        """
+        return self._get_unique_serialized_badges(obj.badges.all())
+
+    def get_default_variant_badges(self, obj):
+        """
+        Badges attached to default variant.
+
+        Example:
+        Discount, Sale, SKU-specific badges.
+        """
+        default_variant = self._get_default_variant(obj)
+
+        if not default_variant:
+            return []
+
+        return self._get_unique_serialized_badges(default_variant.badges.all())
+
     def get_badges(self, obj):
         """
-        Return only DB-backed badges.
+        Combined display badges.
 
-        Important:
-        We do not generate virtual badges here anymore.
-        Discount/Sale badges are automatically attached to ProductVariant.badges
-        in ProductVariant.sync_auto_price_badges().
-        New/Bestseller/Trending should be managed manually in admin.
+        Kept for backward compatibility and simple product-card rendering.
+        For exact badge source, frontend should use:
+        - product_badges
+        - default_variant_badges
+        - variants[].badges
         """
         badges_by_slug = {}
 
-        for badge in obj.badges.all():
-            if badge.is_active:
-                badges_by_slug[badge.slug] = self._serialize_badge(badge)
+        for badge_data in self.get_product_badges(obj):
+            badges_by_slug[badge_data["slug"]] = badge_data
 
-        default_variant = self._get_default_variant(obj)
-
-        if default_variant:
-            for badge in default_variant.badges.all():
-                if badge.is_active:
-                    badges_by_slug[badge.slug] = self._serialize_badge(badge)
+        for badge_data in self.get_default_variant_badges(obj):
+            badges_by_slug[badge_data["slug"]] = badge_data
 
         return list(badges_by_slug.values())
 
@@ -767,6 +806,8 @@ class ProductDetailSerializer(ProductCardSerializer):
             "rating",
             "review_count",
             "badges",
+            "product_badges",
+            "default_variant_badges",
             "available_attributes",
             "default_variant_id",
             "category_slug",
@@ -812,7 +853,49 @@ class ProductDetailSerializer(ProductCardSerializer):
         return ProductVariantSerializer(variants, many=True).data
 
     def get_content_blocks(self, obj):
-        return obj.content_blocks or []
+        return [
+            self._normalize_content_block(block)
+            for block in obj.content_blocks or []
+            if isinstance(block, dict)
+        ]
+
+    def _normalize_content_block(self, block):
+        block_type = block.get("type")
+        content = block.get("content") or {}
+
+        normalized_block = {
+            "key": block.get("key"),
+            "type": block_type,
+            "title": block.get("title"),
+        }
+
+        if block_type == "text":
+            normalized_block["content"] = {
+                "text": content.get("text", ""),
+            }
+
+        elif block_type == "key_value":
+            normalized_block["content"] = {
+                "items": content.get("items") or [],
+            }
+
+        elif block_type == "table":
+            normalized_block["content"] = {
+                "columns": content.get("columns") or [],
+                "rows": content.get("rows") or [],
+            }
+
+        else:
+            normalized_block["content"] = self._remove_empty_content_values(content)
+
+        return normalized_block
+
+    def _remove_empty_content_values(self, content):
+        return {
+            key: value
+            for key, value in content.items()
+            if value not in ("", None, [], {})
+        }
 
 
 class ProductFilterSerializer(serializers.Serializer):
