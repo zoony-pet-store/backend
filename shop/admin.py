@@ -1,5 +1,6 @@
 from decimal import Decimal, ROUND_HALF_UP
 
+import cloudinary.uploader
 from django import forms
 from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin
@@ -17,6 +18,7 @@ from .models import (
     CartItem,
     Category,
     Customer,
+    MediaAsset,
     Product,
     PRODUCT_CONTENT_BLOCKS_SCHEMA,
     ProductAttribute,
@@ -28,6 +30,9 @@ from .models import (
 )
 
 
+CLOUDINARY_PRODUCT_IMAGES_FOLDER = "zoony/product-images"
+
+
 def image_preview(image_url, height=60):
     if image_url:
         return format_html(
@@ -36,6 +41,45 @@ def image_preview(image_url, height=60):
             height,
         )
     return "-"
+
+
+def upload_image_to_cloudinary(uploaded_file):
+    """
+    Upload admin-selected file to Cloudinary.
+
+    Requires Cloudinary configuration in environment/settings.
+    """
+    try:
+        return cloudinary.uploader.upload(
+            uploaded_file,
+            folder=CLOUDINARY_PRODUCT_IMAGES_FOLDER,
+            resource_type="image",
+        )
+    except Exception as error:
+        raise forms.ValidationError(
+            {"upload_file": f"Image upload failed: {error}"}
+        ) from error
+
+
+def create_media_asset_from_upload(uploaded_file, alt_text=""):
+    upload_result = upload_image_to_cloudinary(uploaded_file)
+
+    image_url = upload_result.get("secure_url") or upload_result.get("url")
+    public_id = upload_result.get("public_id", "")
+
+    if not image_url:
+        raise forms.ValidationError(
+            {"upload_file": "Cloudinary did not return image URL."}
+        )
+
+    return MediaAsset.objects.create(
+        title=uploaded_file.name,
+        image_url=image_url,
+        alt_text=alt_text,
+        cloudinary_public_id=public_id,
+        source=MediaAsset.SOURCE_CLOUDINARY,
+        is_active=True,
+    )
 
 
 def unset_other_main_images(image):
@@ -224,6 +268,87 @@ class ProductVariantAttributeForm(forms.ModelForm):
         return cleaned_data
 
 
+class ProductImageAdminForm(forms.ModelForm):
+    upload_file = forms.ImageField(
+        required=False,
+        label="Upload new image",
+        help_text=(
+            "Upload a new image to Cloudinary. "
+            "If provided, it will create a MediaAsset automatically."
+        ),
+    )
+
+    class Meta:
+        model = ProductImage
+        fields = "__all__"
+        help_texts = {
+            "asset": "Select an existing image from media library.",
+            "image_url": (
+                "Optional fallback direct URL. "
+                "Usually filled automatically from selected/uploaded image."
+            ),
+            "cloudinary_public_id": (
+                "Filled automatically for images uploaded to Cloudinary."
+            ),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.fields["asset"].queryset = MediaAsset.objects.filter(
+            is_active=True
+        ).order_by("-created_at", "title")
+        self.fields["image_url"].required = False
+
+    def clean(self):
+        cleaned_data = super().clean()
+
+        upload_file = cleaned_data.get("upload_file")
+        asset = cleaned_data.get("asset")
+        image_url = cleaned_data.get("image_url")
+
+        if not upload_file and not asset and not image_url:
+            raise forms.ValidationError(
+                "Upload a new image, select an image from media library, "
+                "or provide direct image URL."
+            )
+
+        return cleaned_data
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+
+        upload_file = self.cleaned_data.get("upload_file")
+
+        if upload_file:
+            alt_text = instance.alt_text
+
+            if not alt_text and instance.product_id:
+                alt_text = instance.product.name
+
+            asset = create_media_asset_from_upload(
+                uploaded_file=upload_file,
+                alt_text=alt_text,
+            )
+            instance.asset = asset
+
+        if instance.asset_id:
+            if not instance.image_url:
+                instance.image_url = instance.asset.image_url
+
+            if not instance.cloudinary_public_id:
+                instance.cloudinary_public_id = instance.asset.cloudinary_public_id
+
+            if not instance.alt_text:
+                instance.alt_text = instance.asset.alt_text
+
+        if commit:
+            instance.save()
+            self.save_m2m()
+
+        return instance
+
+
 class ProductVariantAttributeInlineFormSet(BaseInlineFormSet):
     def clean(self):
         super().clean()
@@ -350,6 +475,65 @@ class ProductVariantImageInlineFormSet(BaseInlineFormSet):
         return image
 
 
+class ProductVariantImagesOnProductInlineFormSet(BaseInlineFormSet):
+    def clean(self):
+        super().clean()
+
+        main_count_by_variant_id = {}
+
+        for form in self.forms:
+            if not hasattr(form, "cleaned_data"):
+                continue
+
+            cleaned_data = form.cleaned_data
+
+            if cleaned_data.get("DELETE"):
+                continue
+
+            variant = cleaned_data.get("variant")
+
+            if not variant:
+                continue
+
+            if variant.product_id != self.instance.id:
+                raise forms.ValidationError(
+                    f"Variant {variant.sku} does not belong to this product."
+                )
+
+            if cleaned_data.get("is_main"):
+                main_count_by_variant_id[variant.id] = (
+                    main_count_by_variant_id.get(variant.id, 0) + 1
+                )
+
+        for variant_id, main_count in main_count_by_variant_id.items():
+            if main_count > 1:
+                raise forms.ValidationError(
+                    "Only one main image is allowed for one product variant."
+                )
+
+    def save_new(self, form, commit=True):
+        image = super().save_new(form, commit=False)
+        image.product = self.instance
+        unset_other_main_images(image)
+
+        if commit:
+            image.save()
+            form.save_m2m()
+
+        return image
+
+    def save_existing(self, form, instance, commit=True):
+        image = super().save_existing(form, instance, commit=False)
+        image.product = self.instance
+        unset_other_main_images(image)
+
+        if commit:
+            image.save()
+            form.save_m2m()
+
+        return image
+
+
 class ProductVariantAttributeInline(TabularInline):
     model = ProductVariantAttribute
     form = ProductVariantAttributeForm
@@ -365,10 +549,13 @@ class ProductVariantAttributeInline(TabularInline):
 
 class ProductVariantImagesInline(TabularInline):
     model = ProductImage
+    form = ProductImageAdminForm
     formset = ProductVariantImageInlineFormSet
     fk_name = "variant"
     extra = 1
     fields = (
+        "upload_file",
+        "asset",
         "image_url",
         "alt_text",
         "is_main",
@@ -377,6 +564,7 @@ class ProductVariantImagesInline(TabularInline):
         "preview",
     )
     readonly_fields = ("cloudinary_public_id", "preview")
+    autocomplete_fields = ("asset",)
     ordering = ("display_order", "id")
     show_change_link = True
     verbose_name = "Variant image"
@@ -458,10 +646,13 @@ class ProductVariantsInline(StackedInline):
 
 class ProductImagesInline(TabularInline):
     model = ProductImage
+    form = ProductImageAdminForm
     formset = ProductImageInlineFormSet
     fk_name = "product"
     extra = 1
     fields = (
+        "upload_file",
+        "asset",
         "image_url",
         "alt_text",
         "is_main",
@@ -470,6 +661,7 @@ class ProductImagesInline(TabularInline):
         "preview",
     )
     readonly_fields = ("cloudinary_public_id", "preview")
+    autocomplete_fields = ("asset",)
     ordering = ("display_order", "id")
     show_change_link = True
     verbose_name = "Base product image"
@@ -477,6 +669,44 @@ class ProductImagesInline(TabularInline):
 
     def get_queryset(self, request):
         return super().get_queryset(request).filter(variant__isnull=True)
+
+    def preview(self, obj):
+        return image_preview(obj.image_url, height=80)
+
+    preview.short_description = "Preview"
+
+
+class ProductVariantImagesOnProductInline(TabularInline):
+    model = ProductImage
+    form = ProductImageAdminForm
+    formset = ProductVariantImagesOnProductInlineFormSet
+    fk_name = "product"
+    extra = 1
+    fields = (
+        "variant",
+        "upload_file",
+        "asset",
+        "image_url",
+        "alt_text",
+        "is_main",
+        "display_order",
+        "cloudinary_public_id",
+        "preview",
+    )
+    readonly_fields = ("cloudinary_public_id", "preview")
+    autocomplete_fields = ("variant", "asset")
+    ordering = ("variant__sku", "display_order", "id")
+    show_change_link = True
+    verbose_name = "Variant image"
+    verbose_name_plural = "Variant images"
+
+    def get_queryset(self, request):
+        return (
+            super()
+            .get_queryset(request)
+            .filter(variant__isnull=False)
+            .select_related("variant", "asset")
+        )
 
     def preview(self, obj):
         return image_preview(obj.image_url, height=80)
@@ -500,6 +730,39 @@ class CustomerAdmin(UserAdmin):
     fieldsets = UserAdmin.fieldsets + (
         ("Verification", {"fields": ("email_verified",)}),
     )
+
+
+@admin.register(MediaAsset)
+class MediaAssetAdmin(ModelAdmin):
+    list_display = (
+        "preview",
+        "title",
+        "source",
+        "is_active",
+        "cloudinary_public_id",
+        "created_at",
+    )
+    list_filter = ("source", "is_active", "created_at")
+    search_fields = ("title", "alt_text", "image_url", "cloudinary_public_id")
+    readonly_fields = ("preview", "created_at", "updated_at")
+    ordering = ("-created_at", "title")
+
+    fields = (
+        "title",
+        "image_url",
+        "alt_text",
+        "cloudinary_public_id",
+        "source",
+        "is_active",
+        "preview",
+        "created_at",
+        "updated_at",
+    )
+
+    def preview(self, obj):
+        return image_preview(obj.image_url, height=80)
+
+    preview.short_description = "Preview"
 
 
 @admin.register(AnimalType)
@@ -665,6 +928,7 @@ class ProductAdmin(ModelAdmin):
     inlines = (
         ProductVariantsInline,
         ProductImagesInline,
+        ProductVariantImagesOnProductInline,
     )
 
     fieldsets = (
@@ -912,22 +1176,34 @@ class ProductAttributeValueAdmin(ModelAdmin):
 
 @admin.register(ProductImage)
 class ProductImageAdmin(ModelAdmin):
+    form = ProductImageAdminForm
+
     list_display = (
         "product",
         "variant",
+        "asset",
         "is_main",
         "display_order",
         "cloudinary_public_id",
         "preview",
     )
-    list_select_related = ("product", "variant")
-    list_filter = ("is_main",)
-    autocomplete_fields = ("product", "variant")
-    search_fields = ("product__name", "variant__sku", "alt_text")
+    list_select_related = ("product", "variant", "asset")
+    list_filter = ("is_main", "asset__source")
+    autocomplete_fields = ("product", "variant", "asset")
+    search_fields = (
+        "product__name",
+        "variant__sku",
+        "asset__title",
+        "alt_text",
+        "image_url",
+        "cloudinary_public_id",
+    )
     readonly_fields = ("preview",)
     fields = (
         "product",
         "variant",
+        "upload_file",
+        "asset",
         "image_url",
         "alt_text",
         "is_main",
@@ -935,7 +1211,7 @@ class ProductImageAdmin(ModelAdmin):
         "cloudinary_public_id",
         "preview",
     )
-    ordering = ("product", "display_order", "id")
+    ordering = ("product", "variant", "display_order", "id")
 
     def preview(self, obj):
         return image_preview(obj.image_url, height=60)
