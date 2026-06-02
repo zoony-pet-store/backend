@@ -323,13 +323,18 @@ class MediaAssetAdminForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.fields["image_url"].required = False
+        if "image_url" in self.fields:
+            self.fields["image_url"].required = False
 
     def clean(self):
         cleaned_data = super().clean()
 
         upload_file = cleaned_data.get("upload_file")
-        image_url = cleaned_data.get("image_url")
+        image_url = cleaned_data.get("image_url") or getattr(
+            self.instance,
+            "image_url",
+            "",
+        )
 
         if not upload_file and not image_url:
             raise forms.ValidationError(
@@ -404,16 +409,22 @@ class ProductImageAdminForm(forms.ModelForm):
         if "image_url" in self.fields:
             self.fields["image_url"].required = False
 
+        if "cloudinary_public_id" in self.fields:
+            self.fields["cloudinary_public_id"].required = False
+
     def clean(self):
         cleaned_data = super().clean()
 
+        if cleaned_data.get("DELETE"):
+            return cleaned_data
+
         upload_file = cleaned_data.get("upload_file")
-        asset = cleaned_data.get("asset") or getattr(self.instance, "asset", None)
-        image_url = cleaned_data.get("image_url") or getattr(
-            self.instance,
-            "image_url",
-            "",
-        )
+        asset = cleaned_data.get("asset")
+        image_url = cleaned_data.get("image_url")
+        cloudinary_public_id = cleaned_data.get("cloudinary_public_id", "")
+
+        existing_asset = getattr(self.instance, "asset", None)
+        existing_image_url = getattr(self.instance, "image_url", "")
 
         is_empty_extra_form = (
             not self.instance.pk
@@ -427,40 +438,89 @@ class ProductImageAdminForm(forms.ModelForm):
         if is_empty_extra_form:
             return cleaned_data
 
-        if cleaned_data.get("DELETE"):
-            return cleaned_data
+        if upload_file:
+            alt_text = cleaned_data.get("alt_text") or ""
 
-        if not upload_file and not asset and not image_url:
-            raise forms.ValidationError(
-                "Upload a new image, select existing image, "
-                "or provide direct image URL."
+            if not alt_text and getattr(self.instance, "product_id", None):
+                alt_text = self.instance.product.name
+
+            uploaded_asset = create_media_asset_from_upload(
+                uploaded_file=upload_file,
+                alt_text=alt_text,
             )
 
-        return cleaned_data
+            cleaned_data["asset"] = uploaded_asset
+            cleaned_data["image_url"] = uploaded_asset.image_url
+            cleaned_data["cloudinary_public_id"] = uploaded_asset.cloudinary_public_id
+
+            self.instance.asset = uploaded_asset
+            self.instance.image_url = uploaded_asset.image_url
+            self.instance.cloudinary_public_id = uploaded_asset.cloudinary_public_id
+
+            if not self.instance.alt_text:
+                self.instance.alt_text = uploaded_asset.alt_text
+
+            return cleaned_data
+
+        if asset:
+            cleaned_data["image_url"] = asset.image_url
+            cleaned_data["cloudinary_public_id"] = asset.cloudinary_public_id
+
+            self.instance.asset = asset
+            self.instance.image_url = asset.image_url
+            self.instance.cloudinary_public_id = asset.cloudinary_public_id
+
+            if not self.instance.alt_text:
+                self.instance.alt_text = asset.alt_text
+
+            return cleaned_data
+
+        if image_url:
+            linked_asset = get_or_create_media_asset_from_url(
+                image_url=image_url,
+                alt_text=cleaned_data.get("alt_text", ""),
+                cloudinary_public_id=cloudinary_public_id,
+            )
+
+            cleaned_data["asset"] = linked_asset
+            self.instance.asset = linked_asset
+            self.instance.image_url = image_url
+            self.instance.cloudinary_public_id = cloudinary_public_id
+
+            return cleaned_data
+
+        if existing_asset:
+            cleaned_data["asset"] = existing_asset
+            cleaned_data["image_url"] = existing_asset.image_url
+            cleaned_data["cloudinary_public_id"] = existing_asset.cloudinary_public_id
+
+            self.instance.asset = existing_asset
+            self.instance.image_url = existing_asset.image_url
+            self.instance.cloudinary_public_id = existing_asset.cloudinary_public_id
+
+            return cleaned_data
+
+        if existing_image_url:
+            cleaned_data["image_url"] = existing_image_url
+            self.instance.image_url = existing_image_url
+            return cleaned_data
+
+        raise forms.ValidationError(
+            "Upload a new image, select existing image, or provide direct image URL."
+        )
 
     def save(self, commit=True):
         instance = super().save(commit=False)
 
-        upload_file = self.cleaned_data.get("upload_file")
+        asset = self.cleaned_data.get("asset")
 
-        if upload_file:
-            alt_text = instance.alt_text
-
-            if not alt_text and instance.product_id:
-                alt_text = instance.product.name
-
-            asset = create_media_asset_from_upload(
-                uploaded_file=upload_file,
-                alt_text=alt_text,
-            )
+        if asset:
             instance.asset = asset
-
-        if instance.asset_id:
-            instance.image_url = instance.asset.image_url
-            instance.cloudinary_public_id = instance.asset.cloudinary_public_id
+            instance.image_url = asset.image_url
+            instance.cloudinary_public_id = asset.cloudinary_public_id
 
             if not instance.alt_text:
-                instance.alt_text = instance.asset.alt_text
+                instance.alt_text = asset.alt_text
 
         elif instance.image_url:
             instance.asset = get_or_create_media_asset_from_url(
@@ -474,6 +534,14 @@ class ProductImageAdminForm(forms.ModelForm):
             self.save_m2m()
 
         return instance
+
+
+class ProductImageInlineAdminForm(ProductImageAdminForm):
+    class Meta(ProductImageAdminForm.Meta):
+        widgets = {
+            "image_url": forms.HiddenInput(),
+            "cloudinary_public_id": forms.HiddenInput(),
+        }
 
 
 class ProductVariantAttributeInlineFormSet(BaseInlineFormSet):
@@ -694,13 +762,15 @@ class ProductVariantAttributeInline(TabularInline):
 
 class ProductVariantImagesInline(TabularInline):
     model = ProductImage
-    form = ProductImageAdminForm
+    form = ProductImageInlineAdminForm
     formset = ProductVariantImageInlineFormSet
     fk_name = "variant"
     extra = 1
     fields = (
         "upload_file",
         "asset",
+        "image_url",
+        "cloudinary_public_id",
         "alt_text",
         "is_main",
         "preview",
@@ -788,13 +858,15 @@ class ProductVariantsInline(StackedInline):
 
 class ProductImagesInline(TabularInline):
     model = ProductImage
-    form = ProductImageAdminForm
+    form = ProductImageInlineAdminForm
     formset = ProductImageInlineFormSet
     fk_name = "product"
     extra = 1
     fields = (
         "upload_file",
         "asset",
+        "image_url",
+        "cloudinary_public_id",
         "alt_text",
         "is_main",
         "preview",
@@ -822,7 +894,7 @@ class ProductImagesInline(TabularInline):
 
 class ProductVariantImagesOnProductInline(TabularInline):
     model = ProductImage
-    form = ProductImageAdminForm
+    form = ProductImageInlineAdminForm
     formset = ProductVariantImagesOnProductInlineFormSet
     fk_name = "product"
     extra = 1
@@ -830,6 +902,8 @@ class ProductVariantImagesOnProductInline(TabularInline):
         "variant",
         "upload_file",
         "asset",
+        "image_url",
+        "cloudinary_public_id",
         "alt_text",
         "is_main",
         "preview",
