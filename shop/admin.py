@@ -395,18 +395,40 @@ class ProductImageAdminForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.fields["asset"].queryset = MediaAsset.objects.filter(
-            is_active=True
-        ).order_by("-created_at", "title")
-        self.fields["asset"].label = "Select existing image"
-        self.fields["image_url"].required = False
+        if "asset" in self.fields:
+            self.fields["asset"].queryset = MediaAsset.objects.filter(
+                is_active=True
+            ).order_by("-created_at", "title")
+            self.fields["asset"].label = "Select existing image"
+
+        if "image_url" in self.fields:
+            self.fields["image_url"].required = False
 
     def clean(self):
         cleaned_data = super().clean()
 
         upload_file = cleaned_data.get("upload_file")
-        asset = cleaned_data.get("asset")
-        image_url = cleaned_data.get("image_url")
+        asset = cleaned_data.get("asset") or getattr(self.instance, "asset", None)
+        image_url = cleaned_data.get("image_url") or getattr(
+            self.instance,
+            "image_url",
+            "",
+        )
+
+        is_empty_extra_form = (
+            not self.instance.pk
+            and not upload_file
+            and not asset
+            and not image_url
+            and not cleaned_data.get("alt_text")
+            and not cleaned_data.get("is_main")
+        )
+
+        if is_empty_extra_form:
+            return cleaned_data
+
+        if cleaned_data.get("DELETE"):
+            return cleaned_data
 
         if not upload_file and not asset and not image_url:
             raise forms.ValidationError(
