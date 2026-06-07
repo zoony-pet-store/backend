@@ -561,15 +561,18 @@ class ProductVariantAttributeInlineFormSet(BaseInlineFormSet):
 
             attribute = cleaned_data.get("attribute")
 
+            if form.instance and form.instance.pk:
+                attribute = form.instance.attribute
+
             if not attribute:
                 continue
 
             if attribute.id in seen_attributes:
                 raise forms.ValidationError(
                     (
-                        f"Variant can have only one value for attribute "
-                        f'"{attribute.name}". Create another variant if you need '
-                        f"another {attribute.name}."
+                        f'Attribute "{attribute.name}" is selected more than once. '
+                        f"Each variant can have only one value per attribute. "
+                        f"Change the existing row or create another variant."
                     )
                 )
 
