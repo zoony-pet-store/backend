@@ -278,18 +278,14 @@ class ProductVariantAttributeForm(forms.ModelForm):
 
         attribute_id = None
 
-        if self.instance and self.instance.pk and self.instance.attribute_id:
-            attribute_id = self.instance.attribute_id
-
-            if "attribute" in self.fields:
-                self.fields["attribute"].disabled = True
-                self.fields["attribute"].help_text = (
-                    "Attribute cannot be changed after creation. "
-                    "Change the value or delete this row and add a new one."
-                )
-
-        elif self.data:
+        # On POST, always prefer submitted attribute.
+        # This is important when admin changes attribute or adds a new row.
+        if self.data:
             attribute_id = self.data.get(self.add_prefix("attribute"))
+
+        # On GET/edit existing row, use existing attribute.
+        if not attribute_id and self.instance and self.instance.pk:
+            attribute_id = self.instance.attribute_id
 
         if attribute_id:
             self.fields["value"].queryset = ProductAttributeValue.objects.filter(
@@ -310,36 +306,22 @@ class ProductVariantAttributeForm(forms.ModelForm):
 
         attribute = cleaned_data.get("attribute")
         value = cleaned_data.get("value")
-        variant = cleaned_data.get("variant") or getattr(self.instance, "variant", None)
 
-        if self.instance and self.instance.pk:
-            if not self.instance.attribute_id:
-                raise forms.ValidationError(
-                    "Existing variant attribute row is broken: attribute is missing. "
-                    "Delete this row and add it again."
-                )
+        variant_id = getattr(self.instance, "variant_id", None)
+        variant = cleaned_data.get("variant")
 
-            attribute = ProductAttribute.objects.filter(
-                pk=self.instance.attribute_id
-            ).first()
-
-            if not attribute:
-                raise forms.ValidationError(
-                    "Existing variant attribute references a missing attribute. "
-                    "Delete this row and add it again."
-                )
-
-            cleaned_data["attribute"] = attribute
+        if not variant_id and variant:
+            variant_id = variant.id
 
         if attribute and value and value.attribute_id != attribute.id:
             raise forms.ValidationError(
                 {"value": "Selected value does not belong to selected attribute."}
             )
 
-        if variant and attribute:
+        if variant_id and attribute:
             duplicate_exists = (
                 ProductVariantAttribute.objects.filter(
-                    variant=variant,
+                    variant_id=variant_id,
                     attribute=attribute,
                 )
                 .exclude(pk=self.instance.pk)
@@ -600,6 +582,7 @@ class ProductVariantAttributeInlineFormSet(BaseInlineFormSet):
         super().clean()
 
         seen_attributes = {}
+        has_duplicate_errors = False
 
         for form in self.forms:
             if not hasattr(form, "cleaned_data"):
@@ -612,24 +595,25 @@ class ProductVariantAttributeInlineFormSet(BaseInlineFormSet):
 
             attribute = cleaned_data.get("attribute")
 
-            if form.instance and form.instance.pk and form.instance.attribute_id:
-                attribute = ProductAttribute.objects.filter(
-                    pk=form.instance.attribute_id
-                ).first()
-
             if not attribute:
                 continue
 
             if attribute.id in seen_attributes:
-                raise forms.ValidationError(
+                form.add_error(
+                    "attribute",
                     (
                         f'Attribute "{attribute.name}" is selected more than once. '
                         f"Each variant can have only one value per attribute. "
                         f"Change the existing row or create another variant."
-                    )
+                    ),
                 )
+                has_duplicate_errors = True
+                continue
 
             seen_attributes[attribute.id] = attribute
+
+        if has_duplicate_errors:
+            raise forms.ValidationError("Please correct duplicate attributes below.")
 
 
 class ProductImageInlineFormSet(BaseInlineFormSet):
