@@ -1,4 +1,5 @@
 from decimal import Decimal, ROUND_HALF_UP
+from urllib.parse import urlencode
 
 import cloudinary.uploader
 from django import forms
@@ -6,9 +7,10 @@ from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin
 from django.db.models import Count, DecimalField, ExpressionWrapper, F, Q, Sum
 from django.forms.models import BaseInlineFormSet
+from django.urls import reverse
 from django.utils.html import format_html
 from django_jsonform.widgets import JSONFormWidget
-from unfold.admin import ModelAdmin, StackedInline, TabularInline
+from unfold.admin import ModelAdmin, TabularInline
 
 from .models import (
     AnimalType,
@@ -278,12 +280,9 @@ class ProductVariantAttributeForm(forms.ModelForm):
 
         attribute_id = None
 
-        # On POST, always prefer submitted attribute.
-        # This is important when admin changes attribute or adds a new row.
         if self.data:
             attribute_id = self.data.get(self.add_prefix("attribute"))
 
-        # On GET/edit existing row, use existing attribute.
         if not attribute_id and self.instance and self.instance.pk:
             attribute_id = self.instance.attribute_id
 
@@ -616,6 +615,48 @@ class ProductVariantAttributeInlineFormSet(BaseInlineFormSet):
             raise forms.ValidationError("Please correct duplicate attributes below.")
 
 
+class ProductVariantSummaryInlineFormSet(BaseInlineFormSet):
+    def clean(self):
+        super().clean()
+
+        default_count = 0
+        active_variant_count = 0
+
+        for form in self.forms:
+            if not hasattr(form, "cleaned_data"):
+                continue
+
+            cleaned_data = form.cleaned_data
+
+            if cleaned_data.get("DELETE"):
+                continue
+
+            instance = form.instance
+
+            if not instance or not instance.pk:
+                continue
+
+            if instance.is_active:
+                active_variant_count += 1
+
+            if cleaned_data.get("is_default"):
+                default_count += 1
+
+                if not instance.is_active:
+                    form.add_error(
+                        "is_default",
+                        "Inactive variant cannot be selected as default.",
+                    )
+
+        if default_count > 1:
+            raise forms.ValidationError(
+                "Only one product variant can be selected as default."
+            )
+
+        if active_variant_count > 0 and default_count == 0:
+            raise forms.ValidationError("Select one active variant as default.")
+
+
 class ProductImageInlineFormSet(BaseInlineFormSet):
     def clean(self):
         super().clean()
@@ -828,72 +869,88 @@ class ProductVariantImagesInline(TabularInline):
     preview.short_description = "Preview"
 
 
-class ProductVariantsInline(StackedInline):
+class ProductVariantsInline(TabularInline):
     model = ProductVariant
-    form = ProductVariantForm
+    formset = ProductVariantSummaryInlineFormSet
     extra = 0
+    can_delete = False
     show_change_link = True
-    autocomplete_fields = ("badges",)
-    readonly_fields = (
-        "has_discount_display",
-        "discount_percentage_display",
-        "created_at",
-        "updated_at",
+
+    fields = (
+        "variant_preview",
+        "sku",
+        "attributes_summary",
+        "price",
+        "old_price",
+        "stock",
+        "is_active_display",
+        "is_default",
     )
+
+    readonly_fields = (
+        "variant_preview",
+        "sku",
+        "attributes_summary",
+        "price",
+        "old_price",
+        "stock",
+        "is_active_display",
+    )
+
     ordering = ("-is_default", "price", "id")
     verbose_name = "Product variant"
     verbose_name_plural = "Product variants"
 
-    fieldsets = (
-        (
-            "Variant",
-            {
-                "fields": (
-                    "sku",
-                    "is_active",
-                    "is_default",
-                    "stock",
-                    "price",
-                    "old_price",
-                    "discount_percent",
-                    "cost_price",
-                    "has_discount_display",
-                    "discount_percentage_display",
-                    "auto_badges_enabled",
-                    "badges",
-                )
-            },
-        ),
-        (
-            "Variant content overrides",
-            {
-                "fields": ("short_description", "description"),
-                "classes": ("collapse",),
-            },
-        ),
-        (
-            "Service info",
-            {
-                "fields": ("created_at", "updated_at"),
-                "classes": ("collapse",),
-            },
-        ),
-    )
+    def has_add_permission(self, request, obj=None):
+        return False
 
-    def has_discount_display(self, obj):
+    def variant_preview(self, obj):
+        if not obj.pk:
+            return "-"
+
+        image = obj.images.filter(is_main=True).first() or obj.images.first()
+
+        if image and image.image_url:
+            return image_preview(image.image_url, height=48)
+
+        product_image = obj.product.images.filter(
+            variant__isnull=True,
+            is_main=True,
+        ).first()
+
+        if product_image and product_image.image_url:
+            return image_preview(product_image.image_url, height=48)
+
+        return "-"
+
+    variant_preview.short_description = "Preview"
+
+    def attributes_summary(self, obj):
+        if not obj.pk:
+            return "-"
+
+        attributes = obj.variant_attributes.select_related(
+            "attribute",
+            "value",
+        ).all()
+
+        if not attributes:
+            return "-"
+
+        return ", ".join(
+            f"{item.attribute.name}: {item.value.value}" for item in attributes
+        )
+
+    attributes_summary.short_description = "Attributes"
+
+    def is_active_display(self, obj):
         if not obj.pk:
             return False
-        return obj.has_discount
 
-    has_discount_display.short_description = "Has discount"
-    has_discount_display.boolean = True
+        return obj.is_active
 
-    def discount_percentage_display(self, obj):
-        if not obj.pk or not obj.has_discount:
-            return "-"
-        return f"{obj.discount_percentage}%"
-
-    discount_percentage_display.short_description = "Discount %"
+    is_active_display.short_description = "Active"
+    is_active_display.boolean = True
 
 
 class ProductImagesInline(TabularInline):
@@ -1179,6 +1236,7 @@ class ProductAdmin(ModelAdmin):
         "min_price_display",
         "max_price_display",
         "in_stock_display",
+        "add_variant_link",
     )
     date_hierarchy = "created_at"
     save_on_top = True
@@ -1217,6 +1275,16 @@ class ProductAdmin(ModelAdmin):
                     "in_stock_display",
                     "main_image",
                 )
+            },
+        ),
+        (
+            "Product variant management",
+            {
+                "fields": ("add_variant_link",),
+                "description": (
+                    "Variants are shown below as a compact list. "
+                    "Use the button to add a new variant for this product."
+                ),
             },
         ),
         (
@@ -1263,7 +1331,41 @@ class ProductAdmin(ModelAdmin):
 
     def save_related(self, request, form, formsets, change):
         super().save_related(request, form, formsets, change)
-        sync_product_variants_auto_badges(form.instance)
+
+        product = form.instance
+
+        default_variant = product.variants.filter(
+            is_default=True,
+            is_active=True,
+        ).first()
+
+        if default_variant:
+            product.variants.exclude(pk=default_variant.pk).update(is_default=False)
+        else:
+            first_active_variant = product.variants.filter(is_active=True).first()
+
+            if first_active_variant:
+                product.variants.update(is_default=False)
+                product.variants.filter(pk=first_active_variant.pk).update(
+                    is_default=True
+                )
+
+        sync_product_variants_auto_badges(product)
+
+    def add_variant_link(self, obj):
+        if not obj or not obj.pk:
+            return "Save product before adding variants."
+
+        url = reverse("admin:shop_productvariant_add")
+        query_string = urlencode({"product": str(obj.pk)})
+
+        return format_html(
+            '<a class="button" href="{}?{}">+ Add variant for this product</a>',
+            url,
+            query_string,
+        )
+
+    add_variant_link.short_description = "Add variant"
 
     def display_price_display(self, obj):
         return obj.display_price
