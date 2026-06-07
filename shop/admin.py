@@ -278,11 +278,18 @@ class ProductVariantAttributeForm(forms.ModelForm):
 
         attribute_id = None
 
-        if self.data:
-            attribute_id = self.data.get(self.add_prefix("attribute"))
-
-        if not attribute_id and self.instance and self.instance.pk:
+        if self.instance and self.instance.pk and self.instance.attribute_id:
             attribute_id = self.instance.attribute_id
+
+            if "attribute" in self.fields:
+                self.fields["attribute"].disabled = True
+                self.fields["attribute"].help_text = (
+                    "Attribute cannot be changed after creation. "
+                    "Change the value or delete this row and add a new one."
+                )
+
+        elif self.data:
+            attribute_id = self.data.get(self.add_prefix("attribute"))
 
         if attribute_id:
             self.fields["value"].queryset = ProductAttributeValue.objects.filter(
@@ -298,13 +305,57 @@ class ProductVariantAttributeForm(forms.ModelForm):
     def clean(self):
         cleaned_data = super().clean()
 
+        if cleaned_data.get("DELETE"):
+            return cleaned_data
+
         attribute = cleaned_data.get("attribute")
         value = cleaned_data.get("value")
+        variant = cleaned_data.get("variant") or getattr(self.instance, "variant", None)
+
+        if self.instance and self.instance.pk:
+            if not self.instance.attribute_id:
+                raise forms.ValidationError(
+                    "Existing variant attribute row is broken: attribute is missing. "
+                    "Delete this row and add it again."
+                )
+
+            attribute = ProductAttribute.objects.filter(
+                pk=self.instance.attribute_id
+            ).first()
+
+            if not attribute:
+                raise forms.ValidationError(
+                    "Existing variant attribute references a missing attribute. "
+                    "Delete this row and add it again."
+                )
+
+            cleaned_data["attribute"] = attribute
 
         if attribute and value and value.attribute_id != attribute.id:
             raise forms.ValidationError(
                 {"value": "Selected value does not belong to selected attribute."}
             )
+
+        if variant and attribute:
+            duplicate_exists = (
+                ProductVariantAttribute.objects.filter(
+                    variant=variant,
+                    attribute=attribute,
+                )
+                .exclude(pk=self.instance.pk)
+                .exists()
+            )
+
+            if duplicate_exists:
+                raise forms.ValidationError(
+                    {
+                        "attribute": (
+                            f'Attribute "{attribute.name}" is already added to this '
+                            f"variant. Change the existing value instead of adding "
+                            f"a second row with the same attribute."
+                        )
+                    }
+                )
 
         return cleaned_data
 
@@ -561,8 +612,10 @@ class ProductVariantAttributeInlineFormSet(BaseInlineFormSet):
 
             attribute = cleaned_data.get("attribute")
 
-            if form.instance and form.instance.pk:
-                attribute = form.instance.attribute
+            if form.instance and form.instance.pk and form.instance.attribute_id:
+                attribute = ProductAttribute.objects.filter(
+                    pk=form.instance.attribute_id
+                ).first()
 
             if not attribute:
                 continue
