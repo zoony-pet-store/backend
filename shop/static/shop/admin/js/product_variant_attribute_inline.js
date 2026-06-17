@@ -185,7 +185,7 @@
     setVisible(unitContainer, true);
   }
 
-  function syncAllRows() {
+    function syncAllRows() {
     document
       .querySelectorAll('select[name$="-attribute"]')
       .forEach((attributeSelect) => {
@@ -193,11 +193,21 @@
       });
   }
 
-  document.addEventListener("DOMContentLoaded", function () {
+  function boot() {
     syncAllRows();
+    setTimeout(syncAllRows, 100);
     setTimeout(syncAllRows, 300);
     setTimeout(syncAllRows, 800);
-  });
+    setTimeout(syncAllRows, 1500);
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", boot);
+  } else {
+    boot();
+  }
+
+  window.addEventListener("load", syncAllRows);
 
   document.addEventListener("change", function (event) {
     if (event.target.matches('select[name$="-attribute"]')) {
@@ -208,5 +218,8 @@
   document.addEventListener("formset:added", function () {
     syncAllRows();
     setTimeout(syncAllRows, 100);
+    setTimeout(syncAllRows, 300);
   });
+
+  window.syncVariantAttributeInlines = syncAllRows;
 })();
