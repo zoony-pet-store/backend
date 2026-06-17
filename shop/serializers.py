@@ -18,6 +18,7 @@ from .models import (
     Category,
     Customer,
     Product,
+    ProductAttribute,
     ProductImage,
     ProductReview,
     ProductVariant,
@@ -381,8 +382,53 @@ class ProductImageSerializer(serializers.ModelSerializer):
         fields = ["id", "image_url", "alt_text", "is_main", "display_order"]
 
 
+def format_decimal_for_api(value):
+    if value is None:
+        return None
+
+    normalized_value = value.normalize()
+    display_value = format(normalized_value, "f")
+
+    if "." in display_value:
+        display_value = display_value.rstrip("0").rstrip(".")
+
+    return display_value
+
+
+def serialize_numeric_attribute_value(item):
+    return {
+        "type": ProductAttribute.AttributeType.NUMERIC,
+        "display_value": item.display_value,
+        "value": float(item.value_numeric) if item.value_numeric is not None else None,
+        "value_decimal": (
+            str(item.value_numeric) if item.value_numeric is not None else None
+        ),
+        "unit": item.unit or None,
+    }
+
+
+def serialize_select_attribute_value(item):
+    return {
+        "type": ProductAttribute.AttributeType.SELECT,
+        "display_value": item.display_value,
+        "value_id": str(item.value_id) if item.value_id else None,
+        "value": item.value.value if item.value_id else None,
+        "slug": item.value.slug if item.value_id else None,
+    }
+
+
+def serialize_variant_attribute_raw(item):
+    attribute = item.attribute
+
+    if attribute.type == ProductAttribute.AttributeType.NUMERIC:
+        return serialize_numeric_attribute_value(item)
+
+    return serialize_select_attribute_value(item)
+
+
 class ProductVariantSerializer(serializers.ModelSerializer):
     attributes = serializers.SerializerMethodField()
+    attributes_raw = serializers.SerializerMethodField()
     images = serializers.SerializerMethodField()
     badges = BadgeSerializer(many=True, read_only=True)
     has_discount = serializers.BooleanField(read_only=True)
@@ -395,6 +441,7 @@ class ProductVariantSerializer(serializers.ModelSerializer):
             "id",
             "sku",
             "attributes",
+            "attributes_raw",
             "price",
             "old_price",
             "has_discount",
@@ -411,11 +458,13 @@ class ProductVariantSerializer(serializers.ModelSerializer):
 
     def get_attributes(self, obj):
         return {
-            item.attribute.name: {
-                "id": str(item.value.id),
-                "value": item.value.value,
-                "slug": item.value.slug,
-            }
+            item.attribute.name: item.display_value
+            for item in obj.variant_attributes.all()
+        }
+
+    def get_attributes_raw(self, obj):
+        return {
+            item.attribute.name: serialize_variant_attribute_raw(item)
             for item in obj.variant_attributes.all()
         }
 
@@ -426,6 +475,7 @@ class ProductVariantSerializer(serializers.ModelSerializer):
 
 class ProductVariantCardSerializer(serializers.ModelSerializer):
     attributes = serializers.SerializerMethodField()
+    attributes_raw = serializers.SerializerMethodField()
     image_url = serializers.SerializerMethodField()
     badges = BadgeSerializer(many=True, read_only=True)
     has_discount = serializers.BooleanField(read_only=True)
@@ -438,6 +488,7 @@ class ProductVariantCardSerializer(serializers.ModelSerializer):
             "id",
             "sku",
             "attributes",
+            "attributes_raw",
             "price",
             "old_price",
             "has_discount",
@@ -451,7 +502,13 @@ class ProductVariantCardSerializer(serializers.ModelSerializer):
 
     def get_attributes(self, obj):
         return {
-            item.attribute.name: item.value.value
+            item.attribute.name: item.display_value
+            for item in obj.variant_attributes.all()
+        }
+
+    def get_attributes_raw(self, obj):
+        return {
+            item.attribute.name: serialize_variant_attribute_raw(item)
             for item in obj.variant_attributes.all()
         }
 
@@ -746,13 +803,85 @@ class ProductCardSerializer(serializers.ModelSerializer):
 
         for variant in self._get_active_variants(obj):
             for item in variant.variant_attributes.all():
-                attr_name = item.attribute.name
+                attribute = item.attribute
+                attr_name = attribute.name
 
                 if attr_name not in attributes:
                     attributes[attr_name] = {
-                        "attribute_id": str(item.attribute.id),
+                        "attribute_id": str(attribute.id),
+                        "type": attribute.type,
                         "values": [],
                     }
+
+                    if attribute.type == ProductAttribute.AttributeType.NUMERIC:
+                        attributes[attr_name]["units"] = attribute.available_units or []
+                        attributes[attr_name]["ranges_by_unit"] = {}
+
+                if attribute.type == ProductAttribute.AttributeType.NUMERIC:
+                    if item.value_numeric is None:
+                        continue
+
+                    value_data = serialize_numeric_attribute_value(item)
+                    value_key = (
+                        value_data["value_decimal"],
+                        value_data["unit"],
+                    )
+
+                    existing_value_keys = {
+                        (
+                            existing_value.get("value_decimal"),
+                            existing_value.get("unit"),
+                        )
+                        for existing_value in attributes[attr_name]["values"]
+                    }
+
+                    if value_key not in existing_value_keys:
+                        attributes[attr_name]["values"].append(value_data)
+
+                    unit = item.unit or ""
+                    ranges_by_unit = attributes[attr_name]["ranges_by_unit"]
+
+                    if unit not in ranges_by_unit:
+                        ranges_by_unit[unit] = {
+                            "min": value_data["value"],
+                            "max": value_data["value"],
+                            "min_decimal": value_data["value_decimal"],
+                            "max_decimal": value_data["value_decimal"],
+                        }
+                    else:
+                        current_min = ranges_by_unit[unit]["min"]
+                        current_max = ranges_by_unit[unit]["max"]
+                        current_value = value_data["value"]
+
+                        if current_value is not None and (
+                            current_min is None or current_value < current_min
+                        ):
+                            ranges_by_unit[unit]["min"] = current_value
+                            ranges_by_unit[unit]["min_decimal"] = value_data[
+                                "value_decimal"
+                            ]
+
+                        if current_value is not None and (
+                            current_max is None or current_value > current_max
+                        ):
+                            ranges_by_unit[unit]["max"] = current_value
+                            ranges_by_unit[unit]["max_decimal"] = value_data[
+                                "value_decimal"
+                            ]
+
+                    used_units = {
+                        value.get("unit")
+                        for value in attributes[attr_name]["values"]
+                        if value.get("unit")
+                    }
+
+                    if not attributes[attr_name]["units"]:
+                        attributes[attr_name]["units"] = sorted(used_units)
+
+                    continue
+
+                if not item.value_id:
+                    continue
 
                 existing_value_ids = {
                     value_data["id"] for value_data in attributes[attr_name]["values"]

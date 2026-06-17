@@ -768,15 +768,55 @@ class ProductAttribute(models.Model):
     """
     Attribute type, e.g. Size, Color, Weight, Flavor.
 
+    type:
+    - SELECT: value is selected from ProductAttributeValue
+    - NUMERIC: value is entered as number + unit on ProductVariantAttribute
+
     categories is optional:
     - empty means global attribute
     - filled means this attribute is relevant only for selected categories
     """
 
+    class AttributeType(models.TextChoices):
+        SELECT = "select", "Select"
+        NUMERIC = "numeric", "Numeric"
+
+    UNIT_CHOICES = [
+        ("g", "g"),
+        ("kg", "kg"),
+        ("ml", "ml"),
+        ("l", "l"),
+        ("mm", "mm"),
+        ("cm", "cm"),
+        ("m", "m"),
+        ("pcs", "pcs"),
+        ("pack", "pack"),
+    ]
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=100)
     slug = models.SlugField(unique=True, blank=True)
     description = models.TextField(blank=True)
+
+    type = models.CharField(
+        max_length=20,
+        choices=AttributeType.choices,
+        default=AttributeType.SELECT,
+        db_index=True,
+        help_text=(
+            "Select = predefined text values. " "Numeric = number + unit, e.g. 10 kg."
+        ),
+    )
+
+    available_units = models.JSONField(
+        default=list,
+        blank=True,
+        help_text=(
+            "Only for numeric attributes. Example: ['kg', 'g']. "
+            "Leave empty to allow all supported units."
+        ),
+    )
+
     filterable = models.BooleanField(default=True)
     display_order = models.IntegerField(default=0)
 
@@ -789,10 +829,47 @@ class ProductAttribute(models.Model):
     class Meta:
         ordering = ["display_order", "name"]
 
+    @property
+    def is_select(self):
+        return self.type == self.AttributeType.SELECT
+
+    @property
+    def is_numeric(self):
+        return self.type == self.AttributeType.NUMERIC
+
+    @property
+    def allowed_units(self):
+        if self.available_units:
+            return self.available_units
+
+        return [unit for unit, _label in self.UNIT_CHOICES]
+
+    def clean(self):
+        errors = {}
+
+        supported_units = {unit for unit, _label in self.UNIT_CHOICES}
+        invalid_units = [
+            unit for unit in self.available_units if unit not in supported_units
+        ]
+
+        if invalid_units:
+            errors["available_units"] = "Unsupported units: " + ", ".join(
+                sorted(invalid_units)
+            )
+
+        if self.type == self.AttributeType.SELECT and self.available_units:
+            errors["available_units"] = (
+                "Available units should be empty for select attributes."
+            )
+
+        if errors:
+            raise ValidationError(errors)
+
     def save(self, *args, **kwargs):
         if not self.slug:
             self.slug = slugify(self.name)
 
+        self.full_clean()
         super().save(*args, **kwargs)
 
     def __str__(self):
@@ -800,7 +877,12 @@ class ProductAttribute(models.Model):
 
 
 class ProductAttributeValue(models.Model):
-    """Possible value for an attribute, e.g. Size: S, Color: Pink."""
+    """
+    Possible predefined value for SELECT attributes, e.g. Size: S, Color: Pink.
+
+    Numeric attributes should not use this model. Their values are stored in
+    ProductVariantAttribute.value_numeric + ProductVariantAttribute.unit.
+    """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     attribute = models.ForeignKey(
@@ -821,10 +903,26 @@ class ProductAttributeValue(models.Model):
             )
         ]
 
+    def clean(self):
+        if (
+            self.attribute_id
+            and self.attribute.type == ProductAttribute.AttributeType.NUMERIC
+        ):
+            raise ValidationError(
+                {
+                    "attribute": (
+                        "ProductAttributeValue can be used only for select "
+                        "attributes. Numeric attributes store values directly "
+                        "on ProductVariantAttribute."
+                    )
+                }
+            )
+
     def save(self, *args, **kwargs):
         if not self.slug:
             self.slug = self.generate_slug()
 
+        self.full_clean()
         super().save(*args, **kwargs)
 
     def generate_slug(self):
@@ -856,6 +954,19 @@ class ProductAttributeValue(models.Model):
 
     def __str__(self):
         return f"{self.attribute.name}: {self.value}"
+
+
+def format_numeric_attribute_value(value):
+    if value is None:
+        return ""
+
+    normalized_value = value.normalize()
+    display_value = format(normalized_value, "f")
+
+    if "." in display_value:
+        display_value = display_value.rstrip("0").rstrip(".")
+
+    return display_value
 
 
 def get_or_create_auto_price_badge(slug):
@@ -1068,10 +1179,16 @@ class ProductVariantAttribute(models.Model):
     """
     Attribute selected for concrete variant.
 
-    Example:
+    SELECT attribute example:
     Variant: BED-S-PINK
-    Attribute: Size
-    Value: S
+    Attribute: Color
+    Value: Pink
+
+    NUMERIC attribute example:
+    Variant: FOOD-10KG
+    Attribute: Weight
+    value_numeric: 10
+    unit: kg
 
     Constraint:
     One variant can have only one value for the same attribute.
@@ -1089,16 +1206,41 @@ class ProductVariantAttribute(models.Model):
         on_delete=models.CASCADE,
         related_name="variant_attributes",
     )
+
+    # Used only when attribute.type == SELECT.
     value = models.ForeignKey(
         ProductAttributeValue,
         on_delete=models.CASCADE,
         related_name="variant_attributes",
+        null=True,
+        blank=True,
+    )
+
+    # Used only when attribute.type == NUMERIC.
+    value_numeric = models.DecimalField(
+        max_digits=12,
+        decimal_places=3,
+        null=True,
+        blank=True,
+        help_text="Numeric value for numeric attributes, e.g. 10.",
+    )
+    unit = models.CharField(
+        max_length=20,
+        blank=True,
+        default="",
+        help_text="Unit for numeric attributes, e.g. kg, g, ml, l.",
     )
 
     class Meta:
-        ordering = ["attribute__display_order", "value__display_order"]
+        ordering = [
+            "attribute__display_order",
+            "value__display_order",
+            "value_numeric",
+            "unit",
+        ]
         indexes = [
             models.Index(fields=["attribute", "value"]),
+            models.Index(fields=["attribute", "value_numeric", "unit"]),
             models.Index(fields=["variant", "attribute"]),
         ]
         constraints = [
@@ -1108,14 +1250,48 @@ class ProductVariantAttribute(models.Model):
             )
         ]
 
+    @property
+    def display_value(self):
+        if self.attribute.type == ProductAttribute.AttributeType.NUMERIC:
+            if self.value_numeric is None:
+                return ""
+
+            return (
+                f"{format_numeric_attribute_value(self.value_numeric)} {self.unit}"
+            ).strip()
+
+        if self.value_id:
+            return self.value.value
+
+        return ""
+
+    @property
+    def raw_value(self):
+        if self.attribute.type == ProductAttribute.AttributeType.NUMERIC:
+            return {
+                "type": ProductAttribute.AttributeType.NUMERIC,
+                "display_value": self.display_value,
+                "value": (
+                    float(self.value_numeric)
+                    if self.value_numeric is not None
+                    else None
+                ),
+                "value_decimal": (
+                    str(self.value_numeric) if self.value_numeric is not None else None
+                ),
+                "unit": self.unit or None,
+            }
+
+        return {
+            "type": ProductAttribute.AttributeType.SELECT,
+            "display_value": self.display_value,
+            "value_id": str(self.value_id) if self.value_id else None,
+            "value": self.value.value if self.value_id else None,
+            "slug": self.value.slug if self.value_id else None,
+        }
+
     def clean(self):
         errors = {}
-
-        if self.value_id and self.attribute_id:
-            if self.value.attribute_id != self.attribute_id:
-                errors["value"] = (
-                    "Selected value does not belong to selected attribute."
-                )
 
         if self.variant_id and self.attribute_id:
             allowed_categories = self.attribute.categories.all()
@@ -1130,6 +1306,52 @@ class ProductVariantAttribute(models.Model):
                         "This attribute is not allowed for product category."
                     )
 
+        if self.attribute_id:
+            if self.attribute.type == ProductAttribute.AttributeType.SELECT:
+                if not self.value_id:
+                    errors["value"] = "Value is required for select attribute."
+
+                if self.value_numeric is not None:
+                    errors["value_numeric"] = (
+                        "Numeric value must be empty for select attribute."
+                    )
+
+                if self.unit:
+                    errors["unit"] = "Unit must be empty for select attribute."
+
+            elif self.attribute.type == ProductAttribute.AttributeType.NUMERIC:
+                if self.value_id:
+                    errors["value"] = "Text value must be empty for numeric attribute."
+
+                if self.value_numeric is None:
+                    errors["value_numeric"] = (
+                        "Numeric value is required for numeric attribute."
+                    )
+
+                if not self.unit:
+                    errors["unit"] = "Unit is required for numeric attribute."
+
+                if self.unit:
+                    supported_units = {
+                        unit for unit, _label in ProductAttribute.UNIT_CHOICES
+                    }
+
+                    if self.unit not in supported_units:
+                        errors["unit"] = f'Unsupported unit "{self.unit}".'
+
+                    available_units = self.attribute.available_units or []
+
+                    if available_units and self.unit not in available_units:
+                        errors["unit"] = (
+                            f'Unit "{self.unit}" is not allowed for this attribute.'
+                        )
+
+        if self.value_id and self.attribute_id:
+            if self.value.attribute_id != self.attribute_id:
+                errors["value"] = (
+                    "Selected value does not belong to selected attribute."
+                )
+
         if errors:
             raise ValidationError(errors)
 
@@ -1138,7 +1360,7 @@ class ProductVariantAttribute(models.Model):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.variant} | {self.attribute.name}: {self.value.value}"
+        return f"{self.variant} | {self.attribute.name}: {self.display_value}"
 
 
 class MediaAsset(models.Model):
