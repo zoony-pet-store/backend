@@ -2,43 +2,73 @@
   const SELECT_TYPE = "select";
   const NUMERIC_TYPE = "numeric";
 
-  function getRow(element) {
-    if (!element) {
+  function escapeAttributeValue(value) {
+    return String(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  }
+
+  function getFieldByName(name) {
+    return document.querySelector(`[name="${escapeAttributeValue(name)}"]`);
+  }
+
+  function getFieldPrefix(attributeSelect) {
+    if (!attributeSelect || !attributeSelect.name) {
+      return "";
+    }
+
+    return attributeSelect.name.replace(/-attribute$/, "");
+  }
+
+  function getRelatedField(attributeSelect, fieldName) {
+    const prefix = getFieldPrefix(attributeSelect);
+
+    if (!prefix) {
       return null;
+    }
+
+    return getFieldByName(`${prefix}-${fieldName}`);
+  }
+
+  function getNearestCommonAncestor(firstElement, secondElement) {
+    if (!firstElement || !secondElement) {
+      return null;
+    }
+
+    let current = firstElement;
+    let steps = 0;
+
+    while (current && steps < 10) {
+      if (current.contains(secondElement)) {
+        return current;
+      }
+
+      current = current.parentElement;
+      steps += 1;
+    }
+
+    return null;
+  }
+
+  function getFieldContainer(fieldElement) {
+    if (!fieldElement) {
+      return null;
+    }
+
+    const label = fieldElement.id
+      ? document.querySelector(`label[for="${fieldElement.id}"]`)
+      : null;
+
+    const commonAncestor = getNearestCommonAncestor(label, fieldElement);
+
+    if (commonAncestor) {
+      return commonAncestor;
     }
 
     return (
-      element.closest(".dynamic-variant_attributes") ||
-      element.closest("[class*='dynamic-']") ||
-      element.closest("tr.form-row") ||
-      element.closest("tr") ||
-      element.closest(".form-row")
-    );
-  }
-
-  function getFieldElement(row, fieldName) {
-    if (!row) {
-      return null;
-    }
-
-    return row.querySelector(
-      `select[name$="-${fieldName}"], input[name$="-${fieldName}"]`
-    );
-  }
-
-  function getFieldContainer(row, fieldName) {
-    if (!row) {
-      return null;
-    }
-
-    const fieldElement = getFieldElement(row, fieldName);
-
-    return (
-      row.querySelector(`.field-${fieldName}`) ||
-      row.querySelector(`[class*="field-${fieldName}"]`) ||
-      row.querySelector(`[data-field-name="${fieldName}"]`) ||
-      (fieldElement ? fieldElement.closest(".form-row") : null) ||
-      (fieldElement ? fieldElement.closest("div") : null)
+      fieldElement.closest(".form-row") ||
+      fieldElement.closest("[class*='form-row']") ||
+      fieldElement.closest("tr") ||
+      fieldElement.closest("td") ||
+      fieldElement.closest("div")
     );
   }
 
@@ -59,14 +89,12 @@
     fieldElement.dispatchEvent(new Event("change", { bubbles: true }));
   }
 
-  function filterValueOptions(row, attributeId) {
-    const valueSelect = getFieldElement(row, "value");
-
-    if (!valueSelect || valueSelect.tagName !== "SELECT") {
+  function filterValueOptions(valueField, attributeId) {
+    if (!valueField || valueField.tagName !== "SELECT") {
       return;
     }
 
-    Array.from(valueSelect.options).forEach((option) => {
+    Array.from(valueField.options).forEach((option) => {
       if (!option.value) {
         option.hidden = false;
         option.disabled = false;
@@ -80,14 +108,12 @@
       option.disabled = !isAllowed;
 
       if (!isAllowed && option.selected) {
-        valueSelect.value = "";
+        valueField.value = "";
       }
     });
   }
 
-  function filterUnitOptions(row, availableUnitsCsv) {
-    const unitField = getFieldElement(row, "unit");
-
+  function filterUnitOptions(unitField, availableUnitsCsv) {
     if (!unitField || unitField.tagName !== "SELECT") {
       return;
     }
@@ -115,13 +141,7 @@
     });
   }
 
-  function syncRow(row) {
-    if (!row) {
-      return;
-    }
-
-    const attributeSelect = getFieldElement(row, "attribute");
-
+  function syncAttributeSelect(attributeSelect) {
     if (!attributeSelect || attributeSelect.tagName !== "SELECT") {
       return;
     }
@@ -136,16 +156,16 @@
       ? selectedOption.dataset.availableUnits
       : "";
 
-    const valueContainer = getFieldContainer(row, "value");
-    const valueNumericContainer = getFieldContainer(row, "value_numeric");
-    const unitContainer = getFieldContainer(row, "unit");
+    const valueField = getRelatedField(attributeSelect, "value");
+    const valueNumericField = getRelatedField(attributeSelect, "value_numeric");
+    const unitField = getRelatedField(attributeSelect, "unit");
 
-    const valueField = getFieldElement(row, "value");
-    const valueNumericField = getFieldElement(row, "value_numeric");
-    const unitField = getFieldElement(row, "unit");
+    const valueContainer = getFieldContainer(valueField);
+    const valueNumericContainer = getFieldContainer(valueNumericField);
+    const unitContainer = getFieldContainer(unitField);
 
-    filterValueOptions(row, attributeId);
-    filterUnitOptions(row, availableUnits);
+    filterValueOptions(valueField, attributeId);
+    filterUnitOptions(unitField, availableUnits);
 
     if (!attributeId) {
       setVisible(valueContainer, false);
@@ -185,11 +205,11 @@
     setVisible(unitContainer, true);
   }
 
-    function syncAllRows() {
+  function syncAllRows() {
     document
       .querySelectorAll('select[name$="-attribute"]')
       .forEach((attributeSelect) => {
-        syncRow(getRow(attributeSelect));
+        syncAttributeSelect(attributeSelect);
       });
   }
 
@@ -211,7 +231,7 @@
 
   document.addEventListener("change", function (event) {
     if (event.target.matches('select[name$="-attribute"]')) {
-      syncRow(getRow(event.target));
+      syncAttributeSelect(event.target);
     }
   });
 
