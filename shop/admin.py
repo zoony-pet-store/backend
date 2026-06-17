@@ -10,7 +10,7 @@ from django.forms.models import BaseInlineFormSet
 from django.urls import reverse
 from django.utils.html import format_html
 from django_jsonform.widgets import JSONFormWidget
-from unfold.admin import ModelAdmin, TabularInline
+from unfold.admin import ModelAdmin, StackedInline, TabularInline
 
 from .models import (
     AnimalType,
@@ -299,10 +299,10 @@ class ProductVariantForm(forms.ModelForm):
         return cleaned_data
 
 
-class ProductAttributeSelectWidget(forms.Select):
-    def __init__(self, attrs=None, attribute_map=None):
-        super().__init__(attrs)
-        self.attribute_map = attribute_map or {}
+class AttributeSelectWidget(forms.Select):
+    def __init__(self, *args, **kwargs):
+        self.attribute_map = {}
+        super().__init__(*args, **kwargs)
 
     def create_option(
         self,
@@ -324,24 +324,29 @@ class ProductAttributeSelectWidget(forms.Select):
             attrs=attrs,
         )
 
-        raw_value = getattr(value, "value", value)
+        if not value:
+            return option
 
-        if raw_value:
-            attribute = self.attribute_map.get(str(raw_value))
+        attribute = getattr(value, "instance", None)
 
-            if attribute:
-                option["attrs"]["data-attribute-type"] = attribute.type
-                option["attrs"]["data-available-units"] = ",".join(
-                    attribute.allowed_units
-                )
+        if attribute is None:
+            attribute = self.attribute_map.get(str(value))
+
+        if attribute is None:
+            return option
+
+        option["attrs"]["data-attribute-type"] = attribute.type
+        option["attrs"]["data-available-units"] = ",".join(
+            attribute.available_units or []
+        )
 
         return option
 
 
-class ProductAttributeValueSelectWidget(forms.Select):
-    def __init__(self, attrs=None, value_attribute_map=None):
-        super().__init__(attrs)
-        self.value_attribute_map = value_attribute_map or {}
+class AttributeValueSelectWidget(forms.Select):
+    def __init__(self, *args, **kwargs):
+        self.value_map = {}
+        super().__init__(*args, **kwargs)
 
     def create_option(
         self,
@@ -363,27 +368,30 @@ class ProductAttributeValueSelectWidget(forms.Select):
             attrs=attrs,
         )
 
-        raw_value = getattr(value, "value", value)
+        if not value:
+            return option
 
-        if raw_value:
-            attribute_id = self.value_attribute_map.get(str(raw_value))
+        attribute_value = getattr(value, "instance", None)
 
-            if attribute_id:
-                option["attrs"]["data-attribute-id"] = str(attribute_id)
+        if attribute_value is None:
+            attribute_value = self.value_map.get(str(value))
+
+        if attribute_value is None:
+            return option
+
+        option["attrs"]["data-attribute-id"] = str(attribute_value.attribute_id)
 
         return option
 
 
 class ProductVariantAttributeForm(forms.ModelForm):
-    unit = forms.ChoiceField(
-        required=False,
-        choices=[("", "---------")] + ProductAttribute.UNIT_CHOICES,
-        label="Unit",
-    )
-
     class Meta:
         model = ProductVariantAttribute
         fields = "__all__"
+        widgets = {
+            "attribute": AttributeSelectWidget,
+            "value": AttributeValueSelectWidget,
+        }
 
     class Media:
         js = ("shop/admin/js/product_variant_attribute_inline.js",)
@@ -391,133 +399,63 @@ class ProductVariantAttributeForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        attribute_queryset = ProductAttribute.objects.all().order_by(
+        attributes = ProductAttribute.objects.all().order_by(
             "display_order",
             "name",
         )
-        attribute_map = {
-            str(attribute.pk): attribute for attribute in attribute_queryset
+        values = ProductAttributeValue.objects.select_related("attribute").order_by(
+            "attribute__display_order",
+            "attribute__name",
+            "display_order",
+            "value",
+        )
+
+        self.fields["attribute"].queryset = attributes
+        self.fields["value"].queryset = values
+
+        self.fields["attribute"].widget.attribute_map = {
+            str(attribute.pk): attribute for attribute in attributes
         }
-
-        self.fields["attribute"].queryset = attribute_queryset
-        self.fields["attribute"].widget = ProductAttributeSelectWidget(
-            attribute_map=attribute_map
-        )
-
-        value_queryset = (
-            ProductAttributeValue.objects.select_related("attribute")
-            .filter(attribute__type=ProductAttribute.AttributeType.SELECT)
-            .order_by("attribute__display_order", "display_order", "value")
-        )
-        value_attribute_map = {
-            str(value.pk): value.attribute_id for value in value_queryset
+        self.fields["value"].widget.value_map = {
+            str(attribute_value.pk): attribute_value for attribute_value in values
         }
-
-        self.fields["value"].queryset = value_queryset
-        self.fields["value"].required = False
-        self.fields["value"].widget = ProductAttributeValueSelectWidget(
-            value_attribute_map=value_attribute_map
-        )
-
-        self.fields["value_numeric"].required = False
-        self.fields["unit"].required = False
 
     def clean(self):
         cleaned_data = super().clean()
 
-        if cleaned_data.get("DELETE"):
-            return cleaned_data
-
         attribute = cleaned_data.get("attribute")
         value = cleaned_data.get("value")
         value_numeric = cleaned_data.get("value_numeric")
-        unit = cleaned_data.get("unit") or ""
-
-        is_empty_extra_form = (
-            not self.instance.pk
-            and not attribute
-            and not value
-            and value_numeric is None
-            and not unit
-        )
-
-        if is_empty_extra_form:
-            return cleaned_data
+        unit = cleaned_data.get("unit")
 
         if not attribute:
-            raise forms.ValidationError({"attribute": "Attribute is required."})
-
-        variant_id = getattr(self.instance, "variant_id", None)
-        variant = cleaned_data.get("variant")
-
-        if not variant_id and variant:
-            variant_id = variant.id
+            return cleaned_data
 
         if attribute.type == ProductAttribute.AttributeType.SELECT:
-            cleaned_data["value_numeric"] = None
-            cleaned_data["unit"] = ""
-
             if not value:
-                raise forms.ValidationError(
-                    {"value": "Value is required for select attribute."}
-                )
+                raise forms.ValidationError("Select attribute requires value.")
 
             if value.attribute_id != attribute.id:
                 raise forms.ValidationError(
-                    {"value": "Selected value does not belong to selected attribute."}
+                    "Selected value does not belong to selected attribute."
                 )
+
+            cleaned_data["value_numeric"] = None
+            cleaned_data["unit"] = ""
 
         elif attribute.type == ProductAttribute.AttributeType.NUMERIC:
-            cleaned_data["value"] = None
-
             if value_numeric is None:
-                raise forms.ValidationError(
-                    {
-                        "value_numeric": (
-                            "Numeric value is required for numeric attribute."
-                        )
-                    }
-                )
+                raise forms.ValidationError("Numeric attribute requires numeric value.")
 
             if not unit:
+                raise forms.ValidationError("Numeric attribute requires unit.")
+
+            if attribute.available_units and unit not in attribute.available_units:
                 raise forms.ValidationError(
-                    {"unit": "Unit is required for numeric attribute."}
+                    f"Unit '{unit}' is not allowed for {attribute.name}."
                 )
 
-            supported_units = {
-                unit_key for unit_key, _label in ProductAttribute.UNIT_CHOICES
-            }
-
-            if unit not in supported_units:
-                raise forms.ValidationError({"unit": f'Unsupported unit "{unit}".'})
-
-            available_units = attribute.available_units or []
-
-            if available_units and unit not in available_units:
-                raise forms.ValidationError(
-                    {"unit": f'Unit "{unit}" is not allowed for this attribute.'}
-                )
-
-        if variant_id and attribute:
-            duplicate_exists = (
-                ProductVariantAttribute.objects.filter(
-                    variant_id=variant_id,
-                    attribute=attribute,
-                )
-                .exclude(pk=self.instance.pk)
-                .exists()
-            )
-
-            if duplicate_exists:
-                raise forms.ValidationError(
-                    {
-                        "attribute": (
-                            f'Attribute "{attribute.name}" is already added to this '
-                            f"variant. Change the existing value instead of adding "
-                            f"a second row with the same attribute."
-                        )
-                    }
-                )
+            cleaned_data["value"] = None
 
         return cleaned_data
 
@@ -1022,21 +960,20 @@ class ProductVariantImagesOnProductInlineFormSet(BaseInlineFormSet):
         return image
 
 
-class ProductVariantAttributeInline(TabularInline):
+class ProductVariantAttributeInline(StackedInline):
     model = ProductVariantAttribute
     form = ProductVariantAttributeForm
     formset = ProductVariantAttributeInlineFormSet
     extra = 1
-    fields = ("attribute", "value", "value_numeric", "unit")
-    ordering = (
-        "attribute__display_order",
-        "value__display_order",
+    fields = (
+        "attribute",
+        "value",
         "value_numeric",
         "unit",
     )
-    show_change_link = True
-    verbose_name = "Variant attribute"
-    verbose_name_plural = "Variant attributes"
+
+    class Media:
+        js = ("shop/admin/js/product_variant_attribute_inline.js",)
 
 
 class ProductVariantImagesInline(TabularInline):

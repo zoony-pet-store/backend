@@ -3,10 +3,26 @@
   const NUMERIC_TYPE = "numeric";
 
   function getRow(element) {
+    if (!element) {
+      return null;
+    }
+
     return (
+      element.closest(".dynamic-variant_attributes") ||
+      element.closest("[class*='dynamic-']") ||
       element.closest("tr.form-row") ||
-      element.closest(".form-row") ||
-      element.closest("[class*='dynamic-']")
+      element.closest("tr") ||
+      element.closest(".form-row")
+    );
+  }
+
+  function getFieldElement(row, fieldName) {
+    if (!row) {
+      return null;
+    }
+
+    return row.querySelector(
+      `select[name$="-${fieldName}"], input[name$="-${fieldName}"]`
     );
   }
 
@@ -15,9 +31,15 @@
       return null;
     }
 
+    const fieldElement = getFieldElement(row, fieldName);
+
     return (
       row.querySelector(`.field-${fieldName}`) ||
-      row.querySelector(`[class*="field-${fieldName}"]`)
+      row.querySelector(`[class*="field-${fieldName}"]`) ||
+      row.querySelector(`[data-field-name="${fieldName}"]`) ||
+      (fieldElement
+        ? fieldElement.closest(".form-row, .field, td, div")
+        : null)
     );
   }
 
@@ -35,6 +57,12 @@
     }
 
     selectElement.value = "";
+
+    selectElement.dispatchEvent(
+      new Event("change", {
+        bubbles: true,
+      })
+    );
   }
 
   function clearInput(inputElement) {
@@ -46,7 +74,7 @@
   }
 
   function filterValueOptions(row, attributeId) {
-    const valueSelect = row.querySelector('select[name$="-value"]');
+    const valueSelect = getFieldElement(row, "value");
 
     if (!valueSelect) {
       return;
@@ -72,7 +100,7 @@
   }
 
   function filterUnitOptions(row, availableUnitsCsv) {
-    const unitSelect = row.querySelector('select[name$="-unit"]');
+    const unitSelect = getFieldElement(row, "unit");
 
     if (!unitSelect) {
       return;
@@ -106,7 +134,7 @@
       return;
     }
 
-    const attributeSelect = row.querySelector('select[name$="-attribute"]');
+    const attributeSelect = getFieldElement(row, "attribute");
 
     if (!attributeSelect) {
       return;
@@ -126,9 +154,9 @@
     const valueNumericContainer = getFieldContainer(row, "value_numeric");
     const unitContainer = getFieldContainer(row, "unit");
 
-    const valueSelect = row.querySelector('select[name$="-value"]');
-    const valueNumericInput = row.querySelector('input[name$="-value_numeric"]');
-    const unitSelect = row.querySelector('select[name$="-unit"]');
+    const valueSelect = getFieldElement(row, "value");
+    const valueNumericInput = getFieldElement(row, "value_numeric");
+    const unitSelect = getFieldElement(row, "unit");
 
     filterValueOptions(row, attributeId);
     filterUnitOptions(row, availableUnits);
@@ -151,6 +179,7 @@
       setVisible(unitContainer, true);
 
       clearSelect(valueSelect);
+
       return;
     }
 
@@ -161,6 +190,7 @@
 
       clearInput(valueNumericInput);
       clearSelect(unitSelect);
+
       return;
     }
 
@@ -177,7 +207,10 @@
       });
   }
 
-  document.addEventListener("DOMContentLoaded", syncAllRows);
+  document.addEventListener("DOMContentLoaded", function () {
+    syncAllRows();
+    setTimeout(syncAllRows, 300);
+  });
 
   document.addEventListener("change", function (event) {
     if (event.target.matches('select[name$="-attribute"]')) {
@@ -185,7 +218,8 @@
     }
   });
 
-  document.addEventListener("formset:added", function (event) {
-    syncRow(event.target);
+  document.addEventListener("formset:added", function () {
+    syncAllRows();
+    setTimeout(syncAllRows, 100);
   });
 })();
