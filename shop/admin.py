@@ -177,6 +177,35 @@ class ProductForm(forms.ModelForm):
         }
 
 
+class ProductAttributeAdminForm(forms.ModelForm):
+    available_units = forms.MultipleChoiceField(
+        required=False,
+        choices=ProductAttribute.UNIT_CHOICES,
+        widget=forms.CheckboxSelectMultiple,
+        help_text=(
+            "Only for numeric attributes. " "Leave empty to allow all supported units."
+        ),
+    )
+
+    class Meta:
+        model = ProductAttribute
+        fields = "__all__"
+
+    def clean(self):
+        cleaned_data = super().clean()
+
+        attribute_type = cleaned_data.get("type")
+        available_units = list(cleaned_data.get("available_units") or [])
+
+        if attribute_type == ProductAttribute.AttributeType.SELECT:
+            cleaned_data["available_units"] = []
+
+        elif attribute_type == ProductAttribute.AttributeType.NUMERIC:
+            cleaned_data["available_units"] = available_units
+
+        return cleaned_data
+
+
 class ProductVariantForm(forms.ModelForm):
     discount_percent = forms.DecimalField(
         required=False,
@@ -270,32 +299,128 @@ class ProductVariantForm(forms.ModelForm):
         return cleaned_data
 
 
+class ProductAttributeSelectWidget(forms.Select):
+    def __init__(self, attrs=None, attribute_map=None):
+        super().__init__(attrs)
+        self.attribute_map = attribute_map or {}
+
+    def create_option(
+        self,
+        name,
+        value,
+        label,
+        selected,
+        index,
+        subindex=None,
+        attrs=None,
+    ):
+        option = super().create_option(
+            name,
+            value,
+            label,
+            selected,
+            index,
+            subindex=subindex,
+            attrs=attrs,
+        )
+
+        raw_value = getattr(value, "value", value)
+
+        if raw_value:
+            attribute = self.attribute_map.get(str(raw_value))
+
+            if attribute:
+                option["attrs"]["data-attribute-type"] = attribute.type
+                option["attrs"]["data-available-units"] = ",".join(
+                    attribute.allowed_units
+                )
+
+        return option
+
+
+class ProductAttributeValueSelectWidget(forms.Select):
+    def __init__(self, attrs=None, value_attribute_map=None):
+        super().__init__(attrs)
+        self.value_attribute_map = value_attribute_map or {}
+
+    def create_option(
+        self,
+        name,
+        value,
+        label,
+        selected,
+        index,
+        subindex=None,
+        attrs=None,
+    ):
+        option = super().create_option(
+            name,
+            value,
+            label,
+            selected,
+            index,
+            subindex=subindex,
+            attrs=attrs,
+        )
+
+        raw_value = getattr(value, "value", value)
+
+        if raw_value:
+            attribute_id = self.value_attribute_map.get(str(raw_value))
+
+            if attribute_id:
+                option["attrs"]["data-attribute-id"] = str(attribute_id)
+
+        return option
+
+
 class ProductVariantAttributeForm(forms.ModelForm):
+    unit = forms.ChoiceField(
+        required=False,
+        choices=[("", "---------")] + ProductAttribute.UNIT_CHOICES,
+        label="Unit",
+    )
+
     class Meta:
         model = ProductVariantAttribute
         fields = "__all__"
 
+    class Media:
+        js = ("shop/admin/js/product_variant_attribute_inline.js",)
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        attribute_id = None
+        attribute_queryset = ProductAttribute.objects.all().order_by(
+            "display_order",
+            "name",
+        )
+        attribute_map = {
+            str(attribute.pk): attribute for attribute in attribute_queryset
+        }
 
-        if self.data:
-            attribute_id = self.data.get(self.add_prefix("attribute"))
+        self.fields["attribute"].queryset = attribute_queryset
+        self.fields["attribute"].widget = ProductAttributeSelectWidget(
+            attribute_map=attribute_map
+        )
 
-        if not attribute_id and self.instance and self.instance.pk:
-            attribute_id = self.instance.attribute_id
+        value_queryset = (
+            ProductAttributeValue.objects.select_related("attribute")
+            .filter(attribute__type=ProductAttribute.AttributeType.SELECT)
+            .order_by("attribute__display_order", "display_order", "value")
+        )
+        value_attribute_map = {
+            str(value.pk): value.attribute_id for value in value_queryset
+        }
 
-        if attribute_id:
-            self.fields["value"].queryset = ProductAttributeValue.objects.filter(
-                attribute_id=attribute_id
-            ).order_by("display_order", "value")
-        else:
-            self.fields["value"].queryset = (
-                ProductAttributeValue.objects.select_related("attribute")
-                .all()
-                .order_by("attribute__display_order", "display_order", "value")
-            )
+        self.fields["value"].queryset = value_queryset
+        self.fields["value"].required = False
+        self.fields["value"].widget = ProductAttributeValueSelectWidget(
+            value_attribute_map=value_attribute_map
+        )
+
+        self.fields["value_numeric"].required = False
+        self.fields["unit"].required = False
 
     def clean(self):
         cleaned_data = super().clean()
@@ -305,6 +430,22 @@ class ProductVariantAttributeForm(forms.ModelForm):
 
         attribute = cleaned_data.get("attribute")
         value = cleaned_data.get("value")
+        value_numeric = cleaned_data.get("value_numeric")
+        unit = cleaned_data.get("unit") or ""
+
+        is_empty_extra_form = (
+            not self.instance.pk
+            and not attribute
+            and not value
+            and value_numeric is None
+            and not unit
+        )
+
+        if is_empty_extra_form:
+            return cleaned_data
+
+        if not attribute:
+            raise forms.ValidationError({"attribute": "Attribute is required."})
 
         variant_id = getattr(self.instance, "variant_id", None)
         variant = cleaned_data.get("variant")
@@ -312,10 +453,50 @@ class ProductVariantAttributeForm(forms.ModelForm):
         if not variant_id and variant:
             variant_id = variant.id
 
-        if attribute and value and value.attribute_id != attribute.id:
-            raise forms.ValidationError(
-                {"value": "Selected value does not belong to selected attribute."}
-            )
+        if attribute.type == ProductAttribute.AttributeType.SELECT:
+            cleaned_data["value_numeric"] = None
+            cleaned_data["unit"] = ""
+
+            if not value:
+                raise forms.ValidationError(
+                    {"value": "Value is required for select attribute."}
+                )
+
+            if value.attribute_id != attribute.id:
+                raise forms.ValidationError(
+                    {"value": "Selected value does not belong to selected attribute."}
+                )
+
+        elif attribute.type == ProductAttribute.AttributeType.NUMERIC:
+            cleaned_data["value"] = None
+
+            if value_numeric is None:
+                raise forms.ValidationError(
+                    {
+                        "value_numeric": (
+                            "Numeric value is required for numeric attribute."
+                        )
+                    }
+                )
+
+            if not unit:
+                raise forms.ValidationError(
+                    {"unit": "Unit is required for numeric attribute."}
+                )
+
+            supported_units = {
+                unit_key for unit_key, _label in ProductAttribute.UNIT_CHOICES
+            }
+
+            if unit not in supported_units:
+                raise forms.ValidationError({"unit": f'Unsupported unit "{unit}".'})
+
+            available_units = attribute.available_units or []
+
+            if available_units and unit not in available_units:
+                raise forms.ValidationError(
+                    {"unit": f'Unit "{unit}" is not allowed for this attribute.'}
+                )
 
         if variant_id and attribute:
             duplicate_exists = (
@@ -576,6 +757,19 @@ class ProductImageInlineAdminForm(ProductImageAdminForm):
         }
 
 
+class ProductAttributeValueAdminForm(forms.ModelForm):
+    class Meta:
+        model = ProductAttributeValue
+        fields = "__all__"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.fields["attribute"].queryset = ProductAttribute.objects.filter(
+            type=ProductAttribute.AttributeType.SELECT
+        ).order_by("display_order", "name")
+
+
 class ProductVariantAttributeInlineFormSet(BaseInlineFormSet):
     def clean(self):
         super().clean()
@@ -833,9 +1027,13 @@ class ProductVariantAttributeInline(TabularInline):
     form = ProductVariantAttributeForm
     formset = ProductVariantAttributeInlineFormSet
     extra = 1
-    autocomplete_fields = ("attribute",)
-    fields = ("attribute", "value")
-    ordering = ("attribute__display_order", "value__display_order")
+    fields = ("attribute", "value", "value_numeric", "unit")
+    ordering = (
+        "attribute__display_order",
+        "value__display_order",
+        "value_numeric",
+        "unit",
+    )
     show_change_link = True
     verbose_name = "Variant attribute"
     verbose_name_plural = "Variant attributes"
@@ -938,7 +1136,7 @@ class ProductVariantsInline(TabularInline):
             return "-"
 
         return ", ".join(
-            f"{item.attribute.name}: {item.value.value}" for item in attributes
+            f"{item.attribute.name}: {item.display_value}" for item in attributes
         )
 
     attributes_summary.short_description = "Attributes"
@@ -1502,36 +1700,101 @@ class ProductVariantAdmin(ModelAdmin):
 class ProductVariantAttributeAdmin(ModelAdmin):
     form = ProductVariantAttributeForm
 
-    list_display = ("variant", "attribute", "value")
+    list_display = (
+        "variant",
+        "attribute",
+        "attribute_type",
+        "display_value",
+        "value",
+        "value_numeric",
+        "unit",
+    )
     list_select_related = ("variant", "variant__product", "attribute", "value")
-    autocomplete_fields = ("variant", "attribute")
+    autocomplete_fields = ("variant",)
     search_fields = (
         "variant__sku",
         "variant__product__name",
         "attribute__name",
         "value__value",
+        "unit",
     )
-    list_filter = ("attribute",)
-    ordering = ("variant__product__name", "variant__sku", "attribute__display_order")
+    list_filter = ("attribute", "attribute__type", "unit")
+    ordering = (
+        "variant__product__name",
+        "variant__sku",
+        "attribute__display_order",
+    )
+    fields = (
+        "variant",
+        "attribute",
+        "value",
+        "value_numeric",
+        "unit",
+    )
+
+    def attribute_type(self, obj):
+        return obj.attribute.type
+
+    attribute_type.short_description = "Type"
 
 
 @admin.register(ProductAttribute)
 class ProductAttributeAdmin(ModelAdmin):
-    list_display = ("name", "slug", "filterable", "display_order")
-    list_filter = ("filterable",)
+    form = ProductAttributeAdminForm
+
+    list_display = (
+        "name",
+        "slug",
+        "type",
+        "available_units_display",
+        "filterable",
+        "display_order",
+    )
+    list_filter = ("type", "filterable")
     search_fields = ("name", "slug")
     ordering = ("display_order", "name")
     autocomplete_fields = ("categories",)
     filter_horizontal = ("categories",)
 
+    fields = (
+        "name",
+        "slug",
+        "description",
+        "type",
+        "available_units",
+        "filterable",
+        "display_order",
+        "categories",
+    )
+
+    def available_units_display(self, obj):
+        if obj.type != ProductAttribute.AttributeType.NUMERIC:
+            return "-"
+
+        if not obj.available_units:
+            return "All units"
+
+        return ", ".join(obj.available_units)
+
+    available_units_display.short_description = "Available units"
+
 
 @admin.register(ProductAttributeValue)
 class ProductAttributeValueAdmin(ModelAdmin):
+    form = ProductAttributeValueAdminForm
+
     list_display = ("attribute", "value", "slug", "display_order")
     list_select_related = ("attribute",)
-    autocomplete_fields = ("attribute",)
     search_fields = ("value", "slug", "attribute__name")
     ordering = ("attribute__name", "display_order", "value")
+
+    def get_queryset(self, request):
+        return (
+            super()
+            .get_queryset(request)
+            .filter(attribute__type=ProductAttribute.AttributeType.SELECT)
+            .select_related("attribute")
+        )
 
 
 @admin.register(ProductImage)
