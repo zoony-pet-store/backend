@@ -37,9 +37,8 @@
       row.querySelector(`.field-${fieldName}`) ||
       row.querySelector(`[class*="field-${fieldName}"]`) ||
       row.querySelector(`[data-field-name="${fieldName}"]`) ||
-      (fieldElement
-        ? fieldElement.closest(".form-row, .field, td, div")
-        : null)
+      (fieldElement ? fieldElement.closest(".form-row") : null) ||
+      (fieldElement ? fieldElement.closest("div") : null)
     );
   }
 
@@ -51,32 +50,19 @@
     element.style.display = isVisible ? "" : "none";
   }
 
-  function clearSelect(selectElement) {
-    if (!selectElement) {
+  function clearField(fieldElement) {
+    if (!fieldElement) {
       return;
     }
 
-    selectElement.value = "";
-
-    selectElement.dispatchEvent(
-      new Event("change", {
-        bubbles: true,
-      })
-    );
-  }
-
-  function clearInput(inputElement) {
-    if (!inputElement) {
-      return;
-    }
-
-    inputElement.value = "";
+    fieldElement.value = "";
+    fieldElement.dispatchEvent(new Event("change", { bubbles: true }));
   }
 
   function filterValueOptions(row, attributeId) {
     const valueSelect = getFieldElement(row, "value");
 
-    if (!valueSelect) {
+    if (!valueSelect || valueSelect.tagName !== "SELECT") {
       return;
     }
 
@@ -100,9 +86,9 @@
   }
 
   function filterUnitOptions(row, availableUnitsCsv) {
-    const unitSelect = getFieldElement(row, "unit");
+    const unitField = getFieldElement(row, "unit");
 
-    if (!unitSelect) {
+    if (!unitField || unitField.tagName !== "SELECT") {
       return;
     }
 
@@ -110,7 +96,7 @@
       ? availableUnitsCsv.split(",").filter(Boolean)
       : [];
 
-    Array.from(unitSelect.options).forEach((option) => {
+    Array.from(unitField.options).forEach((option) => {
       if (!option.value) {
         option.hidden = false;
         option.disabled = false;
@@ -124,7 +110,7 @@
       option.disabled = !isAllowed;
 
       if (!isAllowed && option.selected) {
-        unitSelect.value = "";
+        unitField.value = "";
       }
     });
   }
@@ -136,7 +122,7 @@
 
     const attributeSelect = getFieldElement(row, "attribute");
 
-    if (!attributeSelect) {
+    if (!attributeSelect || attributeSelect.tagName !== "SELECT") {
       return;
     }
 
@@ -154,9 +140,9 @@
     const valueNumericContainer = getFieldContainer(row, "value_numeric");
     const unitContainer = getFieldContainer(row, "unit");
 
-    const valueSelect = getFieldElement(row, "value");
-    const valueNumericInput = getFieldElement(row, "value_numeric");
-    const unitSelect = getFieldElement(row, "unit");
+    const valueField = getFieldElement(row, "value");
+    const valueNumericField = getFieldElement(row, "value_numeric");
+    const unitField = getFieldElement(row, "unit");
 
     filterValueOptions(row, attributeId);
     filterUnitOptions(row, availableUnits);
@@ -166,9 +152,9 @@
       setVisible(valueNumericContainer, false);
       setVisible(unitContainer, false);
 
-      clearSelect(valueSelect);
-      clearInput(valueNumericInput);
-      clearSelect(unitSelect);
+      clearField(valueField);
+      clearField(valueNumericField);
+      clearField(unitField);
 
       return;
     }
@@ -178,7 +164,7 @@
       setVisible(valueNumericContainer, true);
       setVisible(unitContainer, true);
 
-      clearSelect(valueSelect);
+      clearField(valueField);
 
       return;
     }
@@ -188,8 +174,8 @@
       setVisible(valueNumericContainer, false);
       setVisible(unitContainer, false);
 
-      clearInput(valueNumericInput);
-      clearSelect(unitSelect);
+      clearField(valueNumericField);
+      clearField(unitField);
 
       return;
     }
@@ -210,6 +196,7 @@
   document.addEventListener("DOMContentLoaded", function () {
     syncAllRows();
     setTimeout(syncAllRows, 300);
+    setTimeout(syncAllRows, 800);
   });
 
   document.addEventListener("change", function (event) {
