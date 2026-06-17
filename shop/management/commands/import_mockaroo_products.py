@@ -1,4 +1,5 @@
 import csv
+import re
 import uuid
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -20,13 +21,44 @@ from shop.models import (
 )
 
 
-ATTRIBUTE_COLUMNS = {
+SELECT_ATTRIBUTE_COLUMNS = {
     "size": "Size",
     "color": "Color",
     "material": "Material",
     "flavor": "Flavor",
     "age": "Age",
 }
+
+
+NUMERIC_ATTRIBUTE_COLUMNS = {
+    "weight": {
+        "name": "Weight",
+        "value_column": "weight_value",
+        "unit_column": "weight_unit",
+        "available_units": ["g", "kg"],
+        "default_unit": "kg",
+    },
+    "volume": {
+        "name": "Volume",
+        "value_column": "volume_value",
+        "unit_column": "volume_unit",
+        "available_units": ["ml", "l"],
+        "default_unit": "ml",
+    },
+    "pack_count": {
+        "name": "Pack count",
+        "value_column": "pack_count_value",
+        "unit_column": "pack_count_unit",
+        "available_units": ["pcs", "pack"],
+        "default_unit": "pack",
+    },
+}
+
+
+NUMERIC_VALUE_WITH_UNIT_PATTERN = re.compile(
+    r"^\s*(?P<value>\d+(?:[.,]\d+)?)\s*-?\s*(?P<unit>kg|g|ml|l|pcs|pack|packs)\s*$",
+    re.IGNORECASE,
+)
 
 
 class Command(BaseCommand):
@@ -202,11 +234,21 @@ class Command(BaseCommand):
             is_default=is_default,
         )
 
-        for column_name, attribute_name in ATTRIBUTE_COLUMNS.items():
-            self.attach_attribute_if_present(
+        for column_name, attribute_name in SELECT_ATTRIBUTE_COLUMNS.items():
+            self.attach_select_attribute_if_present(
                 variant=variant,
                 attribute_name=attribute_name,
                 raw_value=row.get(column_name),
+            )
+
+        for numeric_attribute in self.get_numeric_attributes_from_row(row):
+            self.attach_numeric_attribute_if_present(
+                variant=variant,
+                attribute_name=numeric_attribute["name"],
+                raw_value=numeric_attribute["value"],
+                raw_unit=numeric_attribute["unit"],
+                available_units=numeric_attribute["available_units"],
+                default_unit=numeric_attribute["default_unit"],
             )
 
         product_image_created = False
@@ -299,15 +341,31 @@ class Command(BaseCommand):
             },
         ]
 
-        for column_name, attribute_name in ATTRIBUTE_COLUMNS.items():
+        for column_name, attribute_name in SELECT_ATTRIBUTE_COLUMNS.items():
             value = self.clean_value(row.get(column_name))
             if value:
-                items.append(
-                    {
-                        "key": attribute_name,
-                        "value": value,
-                    }
+                self.append_content_item_once(
+                    items=items,
+                    key=attribute_name,
+                    value=value,
                 )
+
+        for numeric_attribute in self.get_numeric_attributes_from_row(row):
+            value = self.parse_decimal(numeric_attribute["value"], required=False)
+
+            if value is None:
+                continue
+
+            unit = (
+                self.normalize_unit(numeric_attribute["unit"])
+                or numeric_attribute["default_unit"]
+            )
+
+            self.append_content_item_once(
+                items=items,
+                key=numeric_attribute["name"],
+                value=f"{self.format_decimal(value)} {unit}",
+            )
 
         product.content_blocks = [
             {
@@ -321,6 +379,19 @@ class Command(BaseCommand):
         ]
 
         product.save(update_fields=["content_blocks", "updated_at"])
+
+    def append_content_item_once(self, items, key, value):
+        existing_keys = {item["key"] for item in items}
+
+        if key in existing_keys:
+            return
+
+        items.append(
+            {
+                "key": key,
+                "value": value,
+            }
+        )
 
     def ensure_product_image(self, product, image_url, alt_text, is_main=False):
         exists = ProductImage.objects.filter(
@@ -409,7 +480,7 @@ class Command(BaseCommand):
 
         return current
 
-    def attach_attribute_if_present(self, variant, attribute_name, raw_value):
+    def attach_select_attribute_if_present(self, variant, attribute_name, raw_value):
         value = self.clean_value(raw_value)
 
         if not value:
@@ -422,9 +493,17 @@ class Command(BaseCommand):
             slug=attribute_slug,
             defaults={
                 "name": attribute_name,
+                "type": ProductAttribute.AttributeType.SELECT,
+                "available_units": [],
                 "filterable": True,
             },
         )
+
+        if attribute.type != ProductAttribute.AttributeType.SELECT:
+            raise CommandError(
+                f'Attribute "{attribute.name}" is not SELECT. '
+                f"Cannot attach text value: {value}"
+            )
 
         attr_value, _ = ProductAttributeValue.objects.get_or_create(
             attribute=attribute,
@@ -439,8 +518,134 @@ class Command(BaseCommand):
             attribute=attribute,
             defaults={
                 "value": attr_value,
+                "value_numeric": None,
+                "unit": "",
             },
         )
+
+    def attach_numeric_attribute_if_present(
+        self,
+        variant,
+        attribute_name,
+        raw_value,
+        raw_unit,
+        available_units,
+        default_unit,
+    ):
+        value = self.parse_decimal(raw_value, required=False)
+
+        if value is None:
+            return
+
+        unit = self.normalize_unit(raw_unit) or default_unit
+
+        if unit not in available_units:
+            raise CommandError(
+                f'Unit "{unit}" is not allowed for numeric attribute '
+                f'"{attribute_name}".'
+            )
+
+        attribute_slug = slugify(attribute_name)
+
+        attribute, _ = ProductAttribute.objects.get_or_create(
+            slug=attribute_slug,
+            defaults={
+                "name": attribute_name,
+                "type": ProductAttribute.AttributeType.NUMERIC,
+                "available_units": available_units,
+                "filterable": True,
+            },
+        )
+
+        if attribute.type != ProductAttribute.AttributeType.NUMERIC:
+            raise CommandError(
+                f'Attribute "{attribute.name}" is not NUMERIC. '
+                f"Cannot attach numeric value: {value} {unit}"
+            )
+
+        if attribute.available_units != available_units:
+            attribute.available_units = available_units
+            attribute.save(update_fields=["available_units"])
+
+        ProductVariantAttribute.objects.update_or_create(
+            variant=variant,
+            attribute=attribute,
+            defaults={
+                "value": None,
+                "value_numeric": value,
+                "unit": unit,
+            },
+        )
+
+    def get_numeric_attributes_from_row(self, row):
+        numeric_attributes_by_name = {}
+
+        inferred_attribute = self.infer_numeric_attribute_from_text(row.get("size"))
+
+        if inferred_attribute:
+            numeric_attributes_by_name[inferred_attribute["name"]] = inferred_attribute
+
+        for config in NUMERIC_ATTRIBUTE_COLUMNS.values():
+            value = self.parse_decimal(row.get(config["value_column"]), required=False)
+
+            if value is None:
+                continue
+
+            unit = self.normalize_unit(row.get(config["unit_column"]))
+
+            numeric_attributes_by_name[config["name"]] = {
+                "name": config["name"],
+                "value": value,
+                "unit": unit or config["default_unit"],
+                "available_units": config["available_units"],
+                "default_unit": config["default_unit"],
+            }
+
+        return list(numeric_attributes_by_name.values())
+
+    def infer_numeric_attribute_from_text(self, raw_value):
+        value = self.clean_value(raw_value)
+
+        if not value:
+            return None
+
+        match = NUMERIC_VALUE_WITH_UNIT_PATTERN.match(value)
+
+        if not match:
+            return None
+
+        number = match.group("value").replace(",", ".")
+        unit = self.normalize_unit(match.group("unit"))
+
+        if unit in ["g", "kg"]:
+            config = NUMERIC_ATTRIBUTE_COLUMNS["weight"]
+        elif unit in ["ml", "l"]:
+            config = NUMERIC_ATTRIBUTE_COLUMNS["volume"]
+        elif unit in ["pcs", "pack"]:
+            config = NUMERIC_ATTRIBUTE_COLUMNS["pack_count"]
+        else:
+            return None
+
+        return {
+            "name": config["name"],
+            "value": number,
+            "unit": unit,
+            "available_units": config["available_units"],
+            "default_unit": config["default_unit"],
+        }
+
+    def normalize_unit(self, raw_unit):
+        unit = self.clean_value(raw_unit)
+
+        if not unit:
+            return None
+
+        unit = unit.lower()
+
+        if unit == "packs":
+            return "pack"
+
+        return unit
 
     def build_unique_product_slug(self, name, category):
         base_slug = slugify(name)
@@ -498,3 +703,12 @@ class Command(BaseCommand):
             return int(Decimal(value))
         except (InvalidOperation, TypeError, ValueError):
             return default
+
+    def format_decimal(self, value):
+        normalized_value = value.normalize()
+        display_value = format(normalized_value, "f")
+
+        if "." in display_value:
+            display_value = display_value.rstrip("0").rstrip(".")
+
+        return display_value

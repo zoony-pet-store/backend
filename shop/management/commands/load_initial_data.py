@@ -1,426 +1,677 @@
-from decimal import Decimal
-
 from django.core.management.base import BaseCommand
-from django.db.models import Avg
 from django.utils.text import slugify
 
 from shop.models import (
     AnimalType,
+    Badge,
     Brand,
     Category,
-    Customer,
-    Product,
     ProductAttribute,
     ProductAttributeValue,
-    ProductImage,
-    ProductReview,
-    ProductVariant,
-    ProductVariantAttribute,
 )
 
 
+SELECT_ATTRIBUTES = [
+    {
+        "name": "Size",
+        "slug": "size",
+        "values": [
+            "Small",
+            "Medium",
+            "Large",
+            "X-Large",
+            "1.5kg",
+            "2kg",
+            "3kg",
+            "4kg",
+            "5kg",
+            "7kg",
+            "8kg",
+            "10kg",
+            "15kg",
+            "16kg",
+            "12-pack",
+            "24-pack",
+            "48-pack",
+        ],
+    },
+    {
+        "name": "Flavor",
+        "slug": "flavor",
+        "values": [
+            "Chicken",
+            "Beef",
+            "Fish",
+            "Lamb",
+            "Turkey",
+            "Salmon",
+            "Duck",
+            "Assorted",
+        ],
+    },
+    {
+        "name": "Age",
+        "slug": "age",
+        "values": [
+            "Puppy/Kitten",
+            "Adult",
+            "Senior",
+            "All Life Stages",
+        ],
+    },
+    {
+        "name": "Color",
+        "slug": "color",
+        "values": [
+            "Red",
+            "Blue",
+            "Green",
+            "Black",
+            "Brown",
+            "Gray",
+            "Multicolor",
+            "White",
+        ],
+    },
+    {
+        "name": "Material",
+        "slug": "material",
+        "values": [
+            "Plastic",
+            "Rubber",
+            "Fabric",
+            "Metal",
+            "Wood",
+            "Silicone",
+            "Clay",
+        ],
+    },
+]
+
+
+NUMERIC_ATTRIBUTES = [
+    {
+        "name": "Weight",
+        "slug": "weight",
+        "available_units": ["g", "kg"],
+    },
+    {
+        "name": "Volume",
+        "slug": "volume",
+        "available_units": ["ml", "l"],
+    },
+    {
+        "name": "Pack count",
+        "slug": "pack-count",
+        "available_units": ["pcs", "pack"],
+    },
+]
+
+
+BADGES = [
+    {
+        "name": "new",
+        "slug": "new",
+        "label": "New",
+        "color": "#FFFFFF",
+        "background_color": "#198754",
+    },
+    {
+        "name": "bestseller",
+        "slug": "bestseller",
+        "label": "Bestseller",
+        "color": "#FFFFFF",
+        "background_color": "#FFC107",
+    },
+    {
+        "name": "trending",
+        "slug": "trending",
+        "label": "Trending",
+        "color": "#FFFFFF",
+        "background_color": "#0D6EFD",
+    },
+    {
+        "name": "recommended",
+        "slug": "recommended",
+        "label": "Recommended",
+        "color": "#FFFFFF",
+        "background_color": "#6F42C1",
+    },
+]
+
+
+BRANDS = [
+    {
+        "name": "Acme Pet Supplies",
+        "slug": "acme-pet-supplies",
+        "logo_url": "https://via.placeholder.com/150x80/4A90E2/FFFFFF?text=Acme",
+    },
+    {
+        "name": "Royal Canin",
+        "slug": "royal-canin",
+        "logo_url": "https://via.placeholder.com/150x80/7B68EE/FFFFFF?text=Royal+Canin",
+    },
+    {
+        "name": "Purina",
+        "slug": "purina",
+        "logo_url": "https://via.placeholder.com/150x80/32CD32/FFFFFF?text=Purina",
+    },
+    {
+        "name": "Hill's Science Diet",
+        "slug": "hills-science-diet",
+        "logo_url": "https://via.placeholder.com/150x80/FF4500/FFFFFF?text=Hill's",
+    },
+    {
+        "name": "PetLux",
+        "slug": "petlux",
+        "logo_url": "https://via.placeholder.com/150x80/FFD700/000000?text=PetLux",
+    },
+    {
+        "name": "VetCare",
+        "slug": "vetcare",
+        "logo_url": "https://via.placeholder.com/150x80/20B2AA/FFFFFF?text=VetCare",
+    },
+    {
+        "name": "PetSafe",
+        "slug": "petsafe",
+        "logo_url": "https://via.placeholder.com/150x80/9370DB/FFFFFF?text=PetSafe",
+    },
+    {
+        "name": "Kong",
+        "slug": "kong",
+        "logo_url": "https://via.placeholder.com/150x80/FF6347/FFFFFF?text=KONG",
+    },
+]
+
+
+DOG_CATEGORIES = [
+    {
+        "name": "Food",
+        "slug": "food",
+        "description": "Dog food and treats",
+        "image_url": "https://images.unsplash.com/photo-1565708097881-bbf4ecf47cc1?w=600&h=400&fit=crop",
+        "sort_order": 1,
+        "children": [
+            {
+                "name": "Dry Food",
+                "slug": "dry-food",
+                "sort_order": 1,
+                "image_url": "https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=400&h=300&fit=crop",
+            },
+            {
+                "name": "Wet Food",
+                "slug": "wet-food",
+                "sort_order": 2,
+                "image_url": "https://images.unsplash.com/photo-1623387641168-d9803ddd3f35?w=400&h=300&fit=crop",
+            },
+            {
+                "name": "Medical Food",
+                "slug": "medical-food",
+                "sort_order": 3,
+                "image_url": "https://images.unsplash.com/photo-1576201836106-db1758fd1c97?w=400&h=300&fit=crop",
+            },
+            {
+                "name": "Treats",
+                "slug": "treats",
+                "sort_order": 4,
+                "image_url": "https://images.unsplash.com/photo-1541364983171-a8ba01e95cfc?w=400&h=300&fit=crop",
+            },
+        ],
+    },
+    {
+        "name": "Care & Hygiene",
+        "slug": "care-hygiene",
+        "description": "Dog care products",
+        "image_url": "https://images.unsplash.com/photo-1509205477838-a534e43a849f?w=600&h=400&fit=crop",
+        "sort_order": 2,
+        "children": [
+            {
+                "name": "Care Products",
+                "slug": "care-products",
+                "sort_order": 1,
+                "image_url": "https://images.unsplash.com/photo-1591946614720-90a587da4a36?w=400&h=300&fit=crop",
+            },
+            {
+                "name": "Shampoos",
+                "slug": "shampoos",
+                "sort_order": 2,
+                "image_url": "https://images.unsplash.com/photo-1548192746-dd526f154ed9?w=400&h=300&fit=crop",
+            },
+            {
+                "name": "Brushes & Combs",
+                "slug": "brushes-combs",
+                "sort_order": 3,
+                "image_url": "https://images.unsplash.com/photo-1564561998327-db0cce0c4c5f?w=400&h=300&fit=crop",
+            },
+        ],
+    },
+    {
+        "name": "Veterinary Pharmacy",
+        "slug": "veterinary-pharmacy",
+        "description": "Medicines and vitamins for dogs",
+        "image_url": "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=600&h=400&fit=crop",
+        "sort_order": 3,
+        "children": [
+            {
+                "name": "Vitamins",
+                "slug": "vitamins",
+                "sort_order": 1,
+                "image_url": "https://images.unsplash.com/photo-1559757148-5c350d0d3c56?w=400&h=300&fit=crop",
+            },
+            {
+                "name": "Medicines",
+                "slug": "medicines",
+                "sort_order": 2,
+                "image_url": "https://images.unsplash.com/photo-1559757175-0eb30cd8c063?w=400&h=300&fit=crop",
+            },
+            {
+                "name": "Prevention",
+                "slug": "prevention",
+                "sort_order": 3,
+                "image_url": "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&h=300&fit=crop",
+            },
+        ],
+    },
+    {
+        "name": "Walks & Travel",
+        "slug": "walks-travel",
+        "image_url": "https://images.unsplash.com/photo-1535930749574-1399327ce78f?w=600&h=400&fit=crop",
+        "sort_order": 4,
+        "children": [
+            {
+                "name": "Leashes",
+                "slug": "leashes",
+                "sort_order": 1,
+                "image_url": "https://images.unsplash.com/photo-1551326844-4df70f78d0e9?w=400&h=300&fit=crop",
+            },
+            {
+                "name": "Collars",
+                "slug": "collars",
+                "sort_order": 2,
+                "image_url": "https://images.unsplash.com/photo-1598134700628-d2de1b9d0b4a?w=400&h=300&fit=crop",
+            },
+            {
+                "name": "Carriers",
+                "slug": "carriers",
+                "sort_order": 3,
+                "image_url": "https://images.unsplash.com/photo-1596273315327-5f059a2e52c9?w=400&h=300&fit=crop",
+            },
+        ],
+    },
+    {
+        "name": "Sets & Gifts",
+        "slug": "sets-gifts",
+        "image_url": "https://images.unsplash.com/photo-1591946653358-5a2e7156cde3?w=600&h=400&fit=crop",
+        "sort_order": 5,
+        "children": [
+            {
+                "name": "Gift Sets",
+                "slug": "gift-sets",
+                "sort_order": 1,
+                "image_url": "https://images.unsplash.com/photo-1559056199-5c0a5b5c5c5a?w=400&h=300&fit=crop",
+            },
+            {
+                "name": "Toys",
+                "slug": "toys",
+                "sort_order": 2,
+                "image_url": "https://images.unsplash.com/photo-1548192746-dd526f154ed9?w=400&h=300&fit=crop",
+            },
+        ],
+    },
+    {
+        "name": "Home Comfort",
+        "slug": "home-comfort",
+        "image_url": "https://images.unsplash.com/photo-1559715541-5d0a4e8c7c6e?w=600&h=400&fit=crop",
+        "sort_order": 6,
+        "children": [
+            {
+                "name": "Beds",
+                "slug": "beds",
+                "sort_order": 1,
+                "image_url": "https://images.unsplash.com/photo-1561037404-61cd46aa615b?w=400&h=300&fit=crop",
+            },
+            {
+                "name": "Bowls",
+                "slug": "bowls",
+                "sort_order": 2,
+                "image_url": "https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=400&h=300&fit=crop",
+            },
+            {
+                "name": "Houses",
+                "slug": "houses",
+                "sort_order": 3,
+                "image_url": "https://images.unsplash.com/photo-1561037404-61cd46aa615b?w=400&h=300&fit=crop",
+            },
+        ],
+    },
+]
+
+
+CAT_CATEGORIES = [
+    {
+        "name": "Food",
+        "slug": "food",
+        "description": "Cat food and treats",
+        "image_url": "https://images.unsplash.com/photo-1574231164645-d6f0e8553590?w=600&h=400&fit=crop",
+        "sort_order": 1,
+        "children": [
+            {
+                "name": "Dry Food",
+                "slug": "dry-food",
+                "sort_order": 1,
+                "image_url": "https://images.unsplash.com/photo-1608848461950-0fe51dfc41cb?w=400&h=300&fit=crop",
+            },
+            {
+                "name": "Wet Food",
+                "slug": "wet-food",
+                "sort_order": 2,
+                "image_url": "https://images.unsplash.com/photo-1576675466969-38eeae4b41f6?w=400&h=300&fit=crop",
+            },
+            {
+                "name": "Treats",
+                "slug": "treats",
+                "sort_order": 3,
+                "image_url": "https://images.unsplash.com/photo-1591946653358-5a2e7156cde3?w=400&h=300&fit=crop",
+            },
+        ],
+    },
+    {
+        "name": "Care & Hygiene",
+        "slug": "care-hygiene",
+        "description": "Cat care products",
+        "image_url": "https://images.unsplash.com/photo-1591946625865-df6dbb0e2db0?w=600&h=400&fit=crop",
+        "sort_order": 2,
+        "children": [
+            {
+                "name": "Care Products",
+                "slug": "care-products",
+                "sort_order": 1,
+                "image_url": "https://images.unsplash.com/photo-1591946614720-90a587da4a36?w=400&h=300&fit=crop",
+            },
+            {
+                "name": "Shampoos",
+                "slug": "shampoos",
+                "sort_order": 2,
+                "image_url": "https://images.unsplash.com/photo-1548192746-dd526f154ed9?w=400&h=300&fit=crop",
+            },
+            {
+                "name": "Litter & Trays",
+                "slug": "litter-trays",
+                "sort_order": 3,
+                "image_url": "https://images.unsplash.com/photo-1591946614720-90a587da4a36?w=400&h=300&fit=crop",
+            },
+        ],
+    },
+    {
+        "name": "Veterinary Pharmacy",
+        "slug": "veterinary-pharmacy",
+        "description": "Medicines and vitamins for cats",
+        "image_url": "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=600&h=400&fit=crop",
+        "sort_order": 3,
+        "children": [
+            {
+                "name": "Vitamins",
+                "slug": "vitamins",
+                "sort_order": 1,
+                "image_url": "https://images.unsplash.com/photo-1559757148-5c350d0d3c56?w=400&h=300&fit=crop",
+            },
+            {
+                "name": "Medicines",
+                "slug": "medicines",
+                "sort_order": 2,
+                "image_url": "https://images.unsplash.com/photo-1559757175-0eb30cd8c063?w=400&h=300&fit=crop",
+            },
+            {
+                "name": "Prevention",
+                "slug": "prevention",
+                "sort_order": 3,
+                "image_url": "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&h=300&fit=crop",
+            },
+        ],
+    },
+    {
+        "name": "Walks & Travel",
+        "slug": "walks-travel",
+        "image_url": "https://images.unsplash.com/photo-1535930749574-1399327ce78f?w=600&h=400&fit=crop",
+        "sort_order": 4,
+        "children": [
+            {
+                "name": "Carriers",
+                "slug": "carriers",
+                "sort_order": 1,
+                "image_url": "https://images.unsplash.com/photo-1596273315327-5f059a2e52c9?w=400&h=300&fit=crop",
+            },
+            {
+                "name": "Travel Accessories",
+                "slug": "travel-accessories",
+                "sort_order": 2,
+                "image_url": "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&h=300&fit=crop",
+            },
+        ],
+    },
+    {
+        "name": "Sets & Gifts",
+        "slug": "sets-gifts",
+        "image_url": "https://images.unsplash.com/photo-1591946653358-5a2e7156cde3?w=600&h=400&fit=crop",
+        "sort_order": 5,
+        "children": [
+            {
+                "name": "Gift Sets",
+                "slug": "gift-sets",
+                "sort_order": 1,
+                "image_url": "https://images.unsplash.com/photo-1559056199-5c0a5b5c5c5a?w=400&h=300&fit=crop",
+            },
+            {
+                "name": "Toys",
+                "slug": "toys",
+                "sort_order": 2,
+                "image_url": "https://images.unsplash.com/photo-1548192746-dd526f154ed9?w=400&h=300&fit=crop",
+            },
+        ],
+    },
+    {
+        "name": "Home Comfort",
+        "slug": "home-comfort",
+        "image_url": "https://images.unsplash.com/photo-1559715541-5d0a4e8c7c6e?w=600&h=400&fit=crop",
+        "sort_order": 6,
+        "children": [
+            {
+                "name": "Beds",
+                "slug": "beds",
+                "sort_order": 1,
+                "image_url": "https://images.unsplash.com/photo-1561037404-61cd46aa615b?w=400&h=300&fit=crop",
+            },
+            {
+                "name": "Bowls",
+                "slug": "bowls",
+                "sort_order": 2,
+                "image_url": "https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=400&h=300&fit=crop",
+            },
+            {
+                "name": "Houses",
+                "slug": "houses",
+                "sort_order": 3,
+                "image_url": "https://images.unsplash.com/photo-1561037404-61cd46aa615b?w=400&h=300&fit=crop",
+            },
+            {
+                "name": "Scratching Posts",
+                "slug": "scratching-posts",
+                "sort_order": 4,
+                "image_url": "https://images.unsplash.com/photo-1561037404-61cd46aa615b?w=400&h=300&fit=crop",
+            },
+        ],
+    },
+]
+
+
 class Command(BaseCommand):
-    help = "Load initial data including categories, brands, products, variants, and reviews"
+    help = "Load base catalog data: animal types, categories, brands, badges, and attributes"
 
     def add_arguments(self, parser):
         parser.add_argument(
             "--skip-if-exists",
             action="store_true",
-            help="Skip if data already exists",
+            help="Skip if base catalog data already exists",
         )
 
     def handle(self, *args, **options):
-        if options["skip_if_exists"] and AnimalType.objects.exists():
-            self.stdout.write("✅ Data already exists, skipping...")
+        if options["skip_if_exists"] and self.base_data_exists():
+            self.stdout.write("✅ Base catalog data already exists, skipping...")
             return
 
-        self.stdout.write("🚀 Starting to load initial data...")
+        self.stdout.write("🚀 Starting to load base catalog data...")
 
-        dog_type, dog_created = AnimalType.objects.get_or_create(
+        dog_type, _ = self.create_or_update_animal_type(
             name="Dogs",
             slug="dogs",
-            defaults={"icon": "🐕", "is_active": True},
+            icon="🐕",
         )
-        cat_type, cat_created = AnimalType.objects.get_or_create(
+        cat_type, _ = self.create_or_update_animal_type(
             name="Cats",
             slug="cats",
-            defaults={"icon": "🐈", "is_active": True},
+            icon="🐈",
         )
 
-        if dog_created or cat_created:
-            self.stdout.write("✅ Animal types created")
-        else:
-            self.stdout.write("✅ Animal types already exist")
+        dog_count = self.create_categories(dog_type, DOG_CATEGORIES, "dogs")
+        cat_count = self.create_categories(cat_type, CAT_CATEGORIES, "cats")
+        brand_count = self.create_brands()
+        badge_count = self.create_badges()
+        select_attribute_count = self.create_select_attributes()
+        numeric_attribute_count = self.create_numeric_attributes()
 
-        dog_categories = [
-            {
-                "name": "Food",
-                "slug": "food",
-                "description": "Dog food and treats",
-                "image_url": "https://images.unsplash.com/photo-1565708097881-bbf4ecf47cc1?w=600&h=400&fit=crop",
-                "sort_order": 1,
-                "children": [
-                    {
-                        "name": "Dry Food",
-                        "slug": "dry-food",
-                        "sort_order": 1,
-                        "image_url": "https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=400&h=300&fit=crop",
-                    },
-                    {
-                        "name": "Wet Food",
-                        "slug": "wet-food",
-                        "sort_order": 2,
-                        "image_url": "https://images.unsplash.com/photo-1623387641168-d9803ddd3f35?w=400&h=300&fit=crop",
-                    },
-                    {
-                        "name": "Medical Food",
-                        "slug": "medical-food",
-                        "sort_order": 3,
-                        "image_url": "https://images.unsplash.com/photo-1576201836106-db1758fd1c97?w=400&h=300&fit=crop",
-                    },
-                    {
-                        "name": "Treats",
-                        "slug": "treats",
-                        "sort_order": 4,
-                        "image_url": "https://images.unsplash.com/photo-1541364983171-a8ba01e95cfc?w=400&h=300&fit=crop",
-                    },
-                ],
-            },
-            {
-                "name": "Care & Hygiene",
-                "slug": "care-hygiene",
-                "description": "Dog care products",
-                "image_url": "https://images.unsplash.com/photo-1509205477838-a534e43a849f?w=600&h=400&fit=crop",
-                "sort_order": 2,
-                "children": [
-                    {
-                        "name": "Care Products",
-                        "slug": "care-products",
-                        "sort_order": 1,
-                        "image_url": "https://images.unsplash.com/photo-1591946614720-90a587da4a36?w=400&h=300&fit=crop",
-                    },
-                    {
-                        "name": "Shampoos",
-                        "slug": "shampoos",
-                        "sort_order": 2,
-                        "image_url": "https://images.unsplash.com/photo-1548192746-dd526f154ed9?w=400&h=300&fit=crop",
-                    },
-                    {
-                        "name": "Brushes & Combs",
-                        "slug": "brushes-combs",
-                        "sort_order": 3,
-                        "image_url": "https://images.unsplash.com/photo-1564561998327-db0cce0c4c5f?w=400&h=300&fit=crop",
-                    },
-                ],
-            },
-            {
-                "name": "Veterinary Pharmacy",
-                "slug": "veterinary-pharmacy",
-                "description": "Medicines and vitamins for dogs",
-                "image_url": "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=600&h=400&fit=crop",
-                "sort_order": 3,
-                "children": [
-                    {
-                        "name": "Vitamins",
-                        "slug": "vitamins",
-                        "sort_order": 1,
-                        "image_url": "https://images.unsplash.com/photo-1559757148-5c350d0d3c56?w=400&h=300&fit=crop",
-                    },
-                    {
-                        "name": "Medicines",
-                        "slug": "medicines",
-                        "sort_order": 2,
-                        "image_url": "https://images.unsplash.com/photo-1559757175-0eb30cd8c063?w=400&h=300&fit=crop",
-                    },
-                    {
-                        "name": "Prevention",
-                        "slug": "prevention",
-                        "sort_order": 3,
-                        "image_url": "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&h=300&fit=crop",
-                    },
-                ],
-            },
-            {
-                "name": "Walks & Travel",
-                "slug": "walks-travel",
-                "image_url": "https://images.unsplash.com/photo-1535930749574-1399327ce78f?w=600&h=400&fit=crop",
-                "sort_order": 4,
-                "children": [
-                    {
-                        "name": "Leashes",
-                        "slug": "leashes",
-                        "sort_order": 1,
-                        "image_url": "https://images.unsplash.com/photo-1551326844-4df70f78d0e9?w=400&h=300&fit=crop",
-                    },
-                    {
-                        "name": "Collars",
-                        "slug": "collars",
-                        "sort_order": 2,
-                        "image_url": "https://images.unsplash.com/photo-1598134700628-d2de1b9d0b4a?w=400&h=300&fit=crop",
-                    },
-                    {
-                        "name": "Carriers",
-                        "slug": "carriers",
-                        "sort_order": 3,
-                        "image_url": "https://images.unsplash.com/photo-1596273315327-5f059a2e52c9?w=400&h=300&fit=crop",
-                    },
-                ],
-            },
-            {
-                "name": "Sets & Gifts",
-                "slug": "sets-gifts",
-                "image_url": "https://images.unsplash.com/photo-1591946653358-5a2e7156cde3?w=600&h=400&fit=crop",
-                "sort_order": 5,
-                "children": [
-                    {
-                        "name": "Gift Sets",
-                        "slug": "gift-sets",
-                        "sort_order": 1,
-                        "image_url": "https://images.unsplash.com/photo-1559056199-5c0a5b5c5c5a?w=400&h=300&fit=crop",
-                    },
-                    {
-                        "name": "Toys",
-                        "slug": "toys",
-                        "sort_order": 2,
-                        "image_url": "https://images.unsplash.com/photo-1548192746-dd526f154ed9?w=400&h=300&fit=crop",
-                    },
-                ],
-            },
-            {
-                "name": "Home Comfort",
-                "slug": "home-comfort",
-                "image_url": "https://images.unsplash.com/photo-1559715541-5d0a4e8c7c6e?w=600&h=400&fit=crop",
-                "sort_order": 6,
-                "children": [
-                    {
-                        "name": "Beds",
-                        "slug": "beds",
-                        "sort_order": 1,
-                        "image_url": "https://images.unsplash.com/photo-1561037404-61cd46aa615b?w=400&h=300&fit=crop",
-                    },
-                    {
-                        "name": "Bowls",
-                        "slug": "bowls",
-                        "sort_order": 2,
-                        "image_url": "https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=400&h=300&fit=crop",
-                    },
-                    {
-                        "name": "Houses",
-                        "slug": "houses",
-                        "sort_order": 3,
-                        "image_url": "https://images.unsplash.com/photo-1561037404-61cd46aa615b?w=400&h=300&fit=crop",
-                    },
-                ],
-            },
-        ]
+        self.stdout.write("")
+        self.stdout.write(
+            self.style.SUCCESS("🎉 Base catalog data loaded successfully")
+        )
+        self.stdout.write(f"Animal types: {AnimalType.objects.count()}")
+        self.stdout.write(f"Dog categories touched: {dog_count}")
+        self.stdout.write(f"Cat categories touched: {cat_count}")
+        self.stdout.write(f"Brands touched: {brand_count}")
+        self.stdout.write(f"Badges touched: {badge_count}")
+        self.stdout.write(f"Select attributes touched: {select_attribute_count}")
+        self.stdout.write(f"Numeric attributes touched: {numeric_attribute_count}")
 
-        cat_categories = [
-            {
-                "name": "Food",
-                "slug": "food",
-                "description": "Cat food and treats",
-                "image_url": "https://images.unsplash.com/photo-1574231164645-d6f0e8553590?w=600&h=400&fit=crop",
-                "sort_order": 1,
-                "children": [
-                    {
-                        "name": "Dry Food",
-                        "slug": "dry-food",
-                        "sort_order": 1,
-                        "image_url": "https://images.unsplash.com/photo-1608848461950-0fe51dfc41cb?w=400&h=300&fit=crop",
-                    },
-                    {
-                        "name": "Wet Food",
-                        "slug": "wet-food",
-                        "sort_order": 2,
-                        "image_url": "https://images.unsplash.com/photo-1576675466969-38eeae4b41f6?w=400&h=300&fit=crop",
-                    },
-                    {
-                        "name": "Treats",
-                        "slug": "treats",
-                        "sort_order": 3,
-                        "image_url": "https://images.unsplash.com/photo-1591946653358-5a2e7156cde3?w=400&h=300&fit=crop",
-                    },
-                ],
-            },
-            {
-                "name": "Care & Hygiene",
-                "slug": "care-hygiene",
-                "description": "Cat care products",
-                "image_url": "https://images.unsplash.com/photo-1591946625865-df6dbb0e2db0?w=600&h=400&fit=crop",
-                "sort_order": 2,
-                "children": [
-                    {
-                        "name": "Care Products",
-                        "slug": "care-products",
-                        "sort_order": 1,
-                        "image_url": "https://images.unsplash.com/photo-1591946614720-90a587da4a36?w=400&h=300&fit=crop",
-                    },
-                    {
-                        "name": "Shampoos",
-                        "slug": "shampoos",
-                        "sort_order": 2,
-                        "image_url": "https://images.unsplash.com/photo-1548192746-dd526f154ed9?w=400&h=300&fit=crop",
-                    },
-                    {
-                        "name": "Litter & Trays",
-                        "slug": "litter-trays",
-                        "sort_order": 3,
-                        "image_url": "https://images.unsplash.com/photo-1591946614720-90a587da4a36?w=400&h=300&fit=crop",
-                    },
-                ],
-            },
-            {
-                "name": "Veterinary Pharmacy",
-                "slug": "veterinary-pharmacy",
-                "description": "Medicines and vitamins for cats",
-                "image_url": "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=600&h=400&fit=crop",
-                "sort_order": 3,
-                "children": [
-                    {
-                        "name": "Vitamins",
-                        "slug": "vitamins",
-                        "sort_order": 1,
-                        "image_url": "https://images.unsplash.com/photo-1559757148-5c350d0d3c56?w=400&h=300&fit=crop",
-                    },
-                    {
-                        "name": "Medicines",
-                        "slug": "medicines",
-                        "sort_order": 2,
-                        "image_url": "https://images.unsplash.com/photo-1559757175-0eb30cd8c063?w=400&h=300&fit=crop",
-                    },
-                    {
-                        "name": "Prevention",
-                        "slug": "prevention",
-                        "sort_order": 3,
-                        "image_url": "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&h=300&fit=crop",
-                    },
-                ],
-            },
-            {
-                "name": "Walks & Travel",
-                "slug": "walks-travel",
-                "image_url": "https://images.unsplash.com/photo-1535930749574-1399327ce78f?w=600&h=400&fit=crop",
-                "sort_order": 4,
-                "children": [
-                    {
-                        "name": "Carriers",
-                        "slug": "carriers",
-                        "sort_order": 1,
-                        "image_url": "https://images.unsplash.com/photo-1596273315327-5f059a2e52c9?w=400&h=300&fit=crop",
-                    },
-                    {
-                        "name": "Travel Accessories",
-                        "slug": "travel-accessories",
-                        "sort_order": 2,
-                        "image_url": "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&h=300&fit=crop",
-                    },
-                ],
-            },
-            {
-                "name": "Sets & Gifts",
-                "slug": "sets-gifts",
-                "image_url": "https://images.unsplash.com/photo-1591946653358-5a2e7156cde3?w=600&h=400&fit=crop",
-                "sort_order": 5,
-                "children": [
-                    {
-                        "name": "Gift Sets",
-                        "slug": "gift-sets",
-                        "sort_order": 1,
-                        "image_url": "https://images.unsplash.com/photo-1559056199-5c0a5b5c5c5a?w=400&h=300&fit=crop",
-                    },
-                    {
-                        "name": "Toys",
-                        "slug": "toys",
-                        "sort_order": 2,
-                        "image_url": "https://images.unsplash.com/photo-1548192746-dd526f154ed9?w=400&h=300&fit=crop",
-                    },
-                ],
-            },
-            {
-                "name": "Home Comfort",
-                "slug": "home-comfort",
-                "image_url": "https://images.unsplash.com/photo-1559715541-5d0a4e8c7c6e?w=600&h=400&fit=crop",
-                "sort_order": 6,
-                "children": [
-                    {
-                        "name": "Beds",
-                        "slug": "beds",
-                        "sort_order": 1,
-                        "image_url": "https://images.unsplash.com/photo-1561037404-61cd46aa615b?w=400&h=300&fit=crop",
-                    },
-                    {
-                        "name": "Bowls",
-                        "slug": "bowls",
-                        "sort_order": 2,
-                        "image_url": "https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=400&h=300&fit=crop",
-                    },
-                    {
-                        "name": "Houses",
-                        "slug": "houses",
-                        "sort_order": 3,
-                        "image_url": "https://images.unsplash.com/photo-1561037404-61cd46aa615b?w=400&h=300&fit=crop",
-                    },
-                    {
-                        "name": "Scratching Posts",
-                        "slug": "scratching-posts",
-                        "sort_order": 4,
-                        "image_url": "https://images.unsplash.com/photo-1561037404-61cd46aa615b?w=400&h=300&fit=crop",
-                    },
-                ],
-            },
-        ]
+        self.stdout.write("")
+        self.stdout.write("Next step:")
+        self.stdout.write(
+            "python manage.py import_mockaroo_products --file MOCK_DATA.csv --replace"
+        )
 
-        dog_count = self.create_categories(dog_type, dog_categories, "dogs")
-        cat_count = self.create_categories(cat_type, cat_categories, "cats")
+    def base_data_exists(self):
+        return (
+            AnimalType.objects.filter(slug__in=["dogs", "cats"]).count() == 2
+            and Brand.objects.exists()
+            and Category.objects.exists()
+            and ProductAttribute.objects.exists()
+        )
 
-        self.stdout.write(f"✅ Created {dog_count} dog categories")
-        self.stdout.write(f"✅ Created {cat_count} cat categories")
+    def create_or_update_animal_type(self, name, slug, icon):
+        animal_type, created = AnimalType.objects.get_or_create(
+            slug=slug,
+            defaults={
+                "name": name,
+                "icon": icon,
+                "is_active": True,
+            },
+        )
 
-        brands = [
-            {
-                "name": "Acme Pet Supplies",
-                "slug": "acme-pet-supplies",
-                "logo_url": "https://via.placeholder.com/150x80/4A90E2/FFFFFF?text=Acme",
-            },
-            {
-                "name": "Royal Canin",
-                "slug": "royal-canin",
-                "logo_url": "https://via.placeholder.com/150x80/7B68EE/FFFFFF?text=Royal+Canin",
-            },
-            {
-                "name": "Purina",
-                "slug": "purina",
-                "logo_url": "https://via.placeholder.com/150x80/32CD32/FFFFFF?text=Purina",
-            },
-            {
-                "name": "Hill's Science Diet",
-                "slug": "hills-science-diet",
-                "logo_url": "https://via.placeholder.com/150x80/FF4500/FFFFFF?text=Hill's",
-            },
-            {
-                "name": "PetLux",
-                "slug": "petlux",
-                "logo_url": "https://via.placeholder.com/150x80/FFD700/000000?text=PetLux",
-            },
-            {
-                "name": "VetCare",
-                "slug": "vetcare",
-                "logo_url": "https://via.placeholder.com/150x80/20B2AA/FFFFFF?text=VetCare",
-            },
-            {
-                "name": "PetSafe",
-                "slug": "petsafe",
-                "logo_url": "https://via.placeholder.com/150x80/9370DB/FFFFFF?text=PetSafe",
-            },
-            {
-                "name": "Kong",
-                "slug": "kong",
-                "logo_url": "https://via.placeholder.com/150x80/FF6347/FFFFFF?text=KONG",
-            },
-        ]
+        update_fields = []
 
-        brand_objects = {}
-        for brand_data in brands:
+        if animal_type.name != name:
+            animal_type.name = name
+            update_fields.append("name")
+
+        if animal_type.icon != icon:
+            animal_type.icon = icon
+            update_fields.append("icon")
+
+        if not animal_type.is_active:
+            animal_type.is_active = True
+            update_fields.append("is_active")
+
+        if update_fields:
+            animal_type.save(update_fields=update_fields)
+
+        action = "Created" if created else "Updated"
+        self.stdout.write(f"✅ {action} animal type: {animal_type.name}")
+
+        return animal_type, created
+
+    def create_categories(self, animal_type, categories_data, animal_name):
+        touched_count = 0
+
+        for category_data in categories_data:
+            parent, parent_created = Category.objects.get_or_create(
+                slug=category_data["slug"],
+                animal_type=animal_type,
+                parent=None,
+                defaults={
+                    "name": category_data["name"],
+                    "description": category_data.get("description", ""),
+                    "image_url": category_data.get("image_url", ""),
+                    "sort_order": category_data["sort_order"],
+                    "is_active": True,
+                },
+            )
+
+            self.update_category(parent, category_data)
+            touched_count += 1
+
+            if parent_created:
+                self.stdout.write(
+                    f"   ✅ Created {animal_name} category: {parent.name}"
+                )
+
+            for child_data in category_data.get("children", []):
+                child, child_created = Category.objects.get_or_create(
+                    parent=parent,
+                    slug=child_data["slug"],
+                    animal_type=animal_type,
+                    defaults={
+                        "name": child_data["name"],
+                        "description": child_data.get("description", ""),
+                        "image_url": child_data.get("image_url", ""),
+                        "sort_order": child_data["sort_order"],
+                        "is_active": True,
+                    },
+                )
+
+                self.update_category(child, child_data)
+                touched_count += 1
+
+                if child_created:
+                    self.stdout.write(
+                        f"      ✅ Created {animal_name} subcategory: {child.name}"
+                    )
+
+        return touched_count
+
+    def update_category(self, category, category_data):
+        update_fields = []
+
+        for field_name in [
+            "name",
+            "description",
+            "image_url",
+            "sort_order",
+        ]:
+            new_value = category_data.get(field_name)
+
+            if new_value is not None and getattr(category, field_name) != new_value:
+                setattr(category, field_name, new_value)
+                update_fields.append(field_name)
+
+        if not category.is_active:
+            category.is_active = True
+            update_fields.append("is_active")
+
+        if update_fields:
+            category.save(update_fields=update_fields)
+
+    def create_brands(self):
+        touched_count = 0
+
+        for brand_data in BRANDS:
             brand, created = Brand.objects.get_or_create(
                 slug=brand_data["slug"],
                 defaults={
@@ -429,915 +680,184 @@ class Command(BaseCommand):
                     "is_active": True,
                 },
             )
-            brand_objects[brand.slug] = brand
+
+            update_fields = []
+
+            if brand.name != brand_data["name"]:
+                brand.name = brand_data["name"]
+                update_fields.append("name")
+
+            if brand.logo_url != brand_data.get("logo_url", ""):
+                brand.logo_url = brand_data.get("logo_url", "")
+                update_fields.append("logo_url")
+
+            if not brand.is_active:
+                brand.is_active = True
+                update_fields.append("is_active")
+
+            if update_fields:
+                brand.save(update_fields=update_fields)
+
+            touched_count += 1
 
             if created:
                 self.stdout.write(f"✅ Created brand: {brand.name}")
 
-        attributes = [
-            {
-                "name": "Size",
-                "slug": "size",
-                "values": [
-                    "Small",
-                    "Medium",
-                    "Large",
-                    "X-Large",
-                    "1.5kg",
-                    "2kg",
-                    "3kg",
-                    "4kg",
-                    "5kg",
-                    "7kg",
-                    "8kg",
-                    "10kg",
-                    "15kg",
-                    "16kg",
-                    "12-pack",
-                    "24-pack",
-                    "48-pack",
-                ],
-            },
-            {
-                "name": "Flavor",
-                "slug": "flavor",
-                "values": [
-                    "Chicken",
-                    "Beef",
-                    "Fish",
-                    "Lamb",
-                    "Turkey",
-                    "Salmon",
-                    "Duck",
-                    "Assorted",
-                ],
-            },
-            {
-                "name": "Age",
-                "slug": "age",
-                "values": ["Puppy/Kitten", "Adult", "Senior", "All Life Stages"],
-            },
-            {
-                "name": "Color",
-                "slug": "color",
-                "values": [
-                    "Red",
-                    "Blue",
-                    "Green",
-                    "Black",
-                    "Brown",
-                    "Gray",
-                    "Multicolor",
-                    "White",
-                ],
-            },
-            {
-                "name": "Material",
-                "slug": "material",
-                "values": [
-                    "Plastic",
-                    "Rubber",
-                    "Fabric",
-                    "Metal",
-                    "Wood",
-                    "Silicone",
-                    "Clay",
-                ],
-            },
-        ]
+        return touched_count
 
-        attribute_objects = {}
-        for attr_data in attributes:
-            attribute, created = ProductAttribute.objects.get_or_create(
-                slug=attr_data["slug"],
+    def create_badges(self):
+        touched_count = 0
+
+        for badge_data in BADGES:
+            badge, created = Badge.objects.get_or_create(
+                slug=badge_data["slug"],
                 defaults={
-                    "name": attr_data["name"],
+                    "name": badge_data["name"],
+                    "label": badge_data["label"],
+                    "color": badge_data["color"],
+                    "background_color": badge_data["background_color"],
+                    "is_active": True,
+                },
+            )
+
+            update_fields = []
+
+            for field_name in [
+                "name",
+                "label",
+                "color",
+                "background_color",
+            ]:
+                if getattr(badge, field_name) != badge_data[field_name]:
+                    setattr(badge, field_name, badge_data[field_name])
+                    update_fields.append(field_name)
+
+            if not badge.is_active:
+                badge.is_active = True
+                update_fields.append("is_active")
+
+            if update_fields:
+                badge.save(update_fields=update_fields)
+
+            touched_count += 1
+
+            if created:
+                self.stdout.write(f"✅ Created badge: {badge.label}")
+
+        return touched_count
+
+    def create_select_attributes(self):
+        touched_count = 0
+
+        for attribute_data in SELECT_ATTRIBUTES:
+            attribute, created = ProductAttribute.objects.get_or_create(
+                slug=attribute_data["slug"],
+                defaults={
+                    "name": attribute_data["name"],
+                    "type": ProductAttribute.AttributeType.SELECT,
+                    "available_units": [],
                     "filterable": True,
                 },
             )
-            attribute_objects[attribute.slug] = attribute
 
-            for index, value in enumerate(attr_data["values"]):
-                ProductAttributeValue.objects.get_or_create(
-                    attribute=attribute,
-                    value=value,
-                    defaults={
-                        "display_order": index,
-                    },
+            update_fields = []
+
+            if attribute.name != attribute_data["name"]:
+                attribute.name = attribute_data["name"]
+                update_fields.append("name")
+
+            if attribute.type != ProductAttribute.AttributeType.SELECT:
+                attribute.type = ProductAttribute.AttributeType.SELECT
+                update_fields.append("type")
+
+            if attribute.available_units:
+                attribute.available_units = []
+                update_fields.append("available_units")
+
+            if not attribute.filterable:
+                attribute.filterable = True
+                update_fields.append("filterable")
+
+            if update_fields:
+                attribute.save(update_fields=update_fields)
+
+            for index, value in enumerate(attribute_data["values"]):
+                value_slug = slugify(value)
+
+                attribute_value, value_created = (
+                    ProductAttributeValue.objects.get_or_create(
+                        attribute=attribute,
+                        slug=value_slug,
+                        defaults={
+                            "value": value,
+                            "display_order": index,
+                        },
+                    )
                 )
 
-            if created:
-                self.stdout.write(f"✅ Created attribute: {attribute.name}")
+                value_update_fields = []
 
-        self.create_sample_products(dog_type, cat_type, brand_objects)
+                if attribute_value.value != value:
+                    attribute_value.value = value
+                    value_update_fields.append("value")
 
-        review_users = self.create_test_users()
-        self.create_sample_reviews(review_users)
+                if attribute_value.display_order != index:
+                    attribute_value.display_order = index
+                    value_update_fields.append("display_order")
 
-        self.print_review_summary()
-        self.print_testing_info()
+                if value_update_fields:
+                    attribute_value.save(update_fields=value_update_fields)
 
-    def create_categories(self, animal_type, categories_data, animal_name):
-        categories_created = 0
-
-        for cat_data in categories_data:
-            parent, created = Category.objects.get_or_create(
-                slug=cat_data["slug"],
-                animal_type=animal_type,
-                parent=None,
-                defaults={
-                    "name": cat_data["name"],
-                    "description": cat_data.get("description", ""),
-                    "image_url": cat_data.get("image_url", ""),
-                    "sort_order": cat_data["sort_order"],
-                    "is_active": True,
-                },
-            )
-
-            if created:
-                categories_created += 1
-                self.stdout.write(
-                    f"   ✅ Created {animal_name} category: {cat_data['name']}"
-                )
-
-            for child_data in cat_data.get("children", []):
-                child, created = Category.objects.get_or_create(
-                    parent=parent,
-                    slug=child_data["slug"],
-                    animal_type=animal_type,
-                    defaults={
-                        "name": child_data["name"],
-                        "sort_order": child_data["sort_order"],
-                        "image_url": child_data.get("image_url", ""),
-                        "is_active": True,
-                    },
-                )
-
-                if created:
-                    categories_created += 1
+                if value_created:
                     self.stdout.write(
-                        f"     ✅ Created {animal_name} subcategory: {child_data['name']}"
+                        f"   ✅ Created value: {attribute.name} / {attribute_value.value}"
                     )
 
-        return categories_created
-
-    def create_test_users(self):
-        users_data = [
-            {"email": "anna@example.com", "username": "anna"},
-            {"email": "ivan@example.com", "username": "ivan"},
-            {"email": "max@example.com", "username": "max"},
-        ]
-
-        users = []
-
-        for data in users_data:
-            user, created = Customer.objects.get_or_create(
-                email=data["email"],
-                defaults={
-                    "username": data["username"],
-                    "email_verified": True,
-                    "is_active": True,
-                },
-            )
+            touched_count += 1
 
             if created:
-                user.set_password("test12345")
-                user.save()
-                self.stdout.write(f"✅ Created test user: {user.email}")
+                self.stdout.write(f"✅ Created select attribute: {attribute.name}")
 
-            users.append(user)
+        return touched_count
 
-        return users
+    def create_numeric_attributes(self):
+        touched_count = 0
 
-    def sync_product_review_stats(self, product):
-        active_reviews = ProductReview.objects.filter(product=product, is_active=True)
-        review_count = active_reviews.count()
-        avg_rating = active_reviews.aggregate(avg=Avg("rating"))["avg"] or 0
-
-        product.review_count = review_count
-        product.rating = round(avg_rating, 2)
-        product.save(update_fields=["review_count", "rating"])
-
-    def create_sample_products(self, dog_type, cat_type, brands):
-        dog_dry_food = Category.objects.get(
-            animal_type=dog_type,
-            slug="dry-food",
-            parent__slug="food",
-        )
-        dog_treats = Category.objects.get(
-            animal_type=dog_type,
-            slug="treats",
-            parent__slug="food",
-        )
-        dog_toys = Category.objects.get(
-            animal_type=dog_type,
-            slug="toys",
-            parent__slug="sets-gifts",
-        )
-        dog_beds = Category.objects.get(
-            animal_type=dog_type,
-            slug="beds",
-            parent__slug="home-comfort",
-        )
-
-        cat_dry_food = Category.objects.get(
-            animal_type=cat_type,
-            slug="dry-food",
-            parent__slug="food",
-        )
-        cat_wet_food = Category.objects.get(
-            animal_type=cat_type,
-            slug="wet-food",
-            parent__slug="food",
-        )
-        cat_toys = Category.objects.get(
-            animal_type=cat_type,
-            slug="toys",
-            parent__slug="sets-gifts",
-        )
-        cat_litter = Category.objects.get(
-            animal_type=cat_type,
-            slug="litter-trays",
-            parent__slug="care-hygiene",
-        )
-
-        products = [
-            {
-                "name": "Premium Adult Dog Food",
-                "slug": "premium-adult-dog-food",
-                "description": "Complete and balanced nutrition for adult dogs with high-quality protein. Contains essential vitamins and minerals for optimal health.",
-                "short_description": "High-quality dog food for adult dogs",
-                "category": dog_dry_food,
-                "brand": brands["royal-canin"],
-                "images": [
-                    "https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=600&h=600&fit=crop",
-                    "https://images.unsplash.com/photo-1559056199-641a0ac8b55e?w=600&h=600&fit=crop",
-                ],
-                "variants": [
-                    {"sku": "DOG-FOOD-2KG", "size": "2kg", "price": 25.99, "stock": 50},
-                    {"sku": "DOG-FOOD-5KG", "size": "5kg", "price": 45.99, "stock": 30},
-                    {
-                        "sku": "DOG-FOOD-10KG",
-                        "size": "10kg",
-                        "price": 79.99,
-                        "stock": 20,
-                    },
-                ],
-                "attributes": {"Flavor": "Chicken", "Age": "Adult"},
-                "characteristics": [
-                    {"label": "Animal", "value": "Dogs"},
-                    {"label": "Brand", "value": "Royal Canin"},
-                    {"label": "Product group", "value": "Dry food"},
-                    {"label": "Age", "value": "Adult"},
-                    {"label": "Flavor", "value": "Chicken"},
-                ],
-                "typical_analysis": [
-                    {"label": "Protein", "value": "25%"},
-                    {"label": "Fat", "value": "15%"},
-                    {"label": "Fiber", "value": "4%"},
-                    {"label": "Moisture", "value": "10%"},
-                ],
-                "feeding_guidelines": [
-                    {
-                        "pet_weight": "2 kg",
-                        "active_lifestyle": "55 g",
-                        "sedentary_lifestyle": "45 g",
-                        "overweight": "40 g",
-                    },
-                    {
-                        "pet_weight": "5 kg",
-                        "active_lifestyle": "110 g",
-                        "sedentary_lifestyle": "90 g",
-                        "overweight": "80 g",
-                    },
-                    {
-                        "pet_weight": "10 kg",
-                        "active_lifestyle": "185 g",
-                        "sedentary_lifestyle": "150 g",
-                        "overweight": "135 g",
-                    },
-                ],
-            },
-            {
-                "name": "Dental Chew Treats",
-                "slug": "dental-chew-treats",
-                "description": "Helps clean teeth and freshen breath while providing a tasty treat. Made with natural ingredients.",
-                "short_description": "Dental care treats for dogs",
-                "category": dog_treats,
-                "brand": brands["purina"],
-                "images": [
-                    "https://images.unsplash.com/photo-1541364983171-a8ba01e95cfc?w=600&h=600&fit=crop"
-                ],
-                "variants": [
-                    {
-                        "sku": "TREATS-SMALL",
-                        "size": "Small",
-                        "price": 8.99,
-                        "stock": 100,
-                    },
-                    {
-                        "sku": "TREATS-MEDIUM",
-                        "size": "Medium",
-                        "price": 12.99,
-                        "stock": 80,
-                    },
-                    {
-                        "sku": "TREATS-LARGE",
-                        "size": "Large",
-                        "price": 18.99,
-                        "stock": 60,
-                    },
-                ],
-                "attributes": {"Flavor": "Beef", "Age": "Adult"},
-                "characteristics": [
-                    {"label": "Animal", "value": "Dogs"},
-                    {"label": "Brand", "value": "Purina"},
-                    {"label": "Product group", "value": "Treats"},
-                    {"label": "Purpose", "value": "Dental care"},
-                    {"label": "Flavor", "value": "Beef"},
-                ],
-                "typical_analysis": [
-                    {"label": "Protein", "value": "18%"},
-                    {"label": "Fat", "value": "6%"},
-                    {"label": "Fiber", "value": "3%"},
-                ],
-            },
-            {
-                "name": "Interactive Rubber Ball",
-                "slug": "interactive-rubber-ball",
-                "description": "Durable rubber ball for interactive play, bounces unpredictably",
-                "short_description": "Durable rubber ball for dogs",
-                "category": dog_toys,
-                "brand": brands["kong"],
-                "images": [
-                    "https://images.unsplash.com/photo-1548192746-dd526f154ed9?w=600&h=600&fit=crop"
-                ],
-                "variants": [
-                    {
-                        "sku": "BALL-SMALL",
-                        "size": "Small",
-                        "price": 9.99,
-                        "stock": 40,
-                        "color": "Red",
-                    },
-                    {
-                        "sku": "BALL-MEDIUM",
-                        "size": "Medium",
-                        "price": 15.99,
-                        "stock": 60,
-                        "color": "Blue",
-                    },
-                    {
-                        "sku": "BALL-LARGE",
-                        "size": "Large",
-                        "price": 21.99,
-                        "stock": 30,
-                        "color": "Green",
-                    },
-                ],
-                "attributes": {"Material": "Rubber"},
-                "characteristics": [
-                    {"label": "Animal", "value": "Dogs"},
-                    {"label": "Brand", "value": "Kong"},
-                    {"label": "Product group", "value": "Toys"},
-                    {"label": "Material", "value": "Rubber"},
-                ],
-            },
-            {
-                "name": "Orthopedic Memory Foam Bed",
-                "slug": "orthopedic-memory-foam-bed",
-                "description": "Provides superior comfort and support for dogs with joint issues",
-                "short_description": "Orthopedic bed for dogs",
-                "category": dog_beds,
-                "brand": brands["petlux"],
-                "images": [
-                    "https://images.unsplash.com/photo-1561037404-61cd46aa615b?w=600&h=600&fit=crop"
-                ],
-                "variants": [
-                    {
-                        "sku": "BED-SMALL",
-                        "size": "Small",
-                        "price": 59.99,
-                        "stock": 15,
-                        "color": "Brown",
-                    },
-                    {
-                        "sku": "BED-MEDIUM",
-                        "size": "Medium",
-                        "price": 89.99,
-                        "stock": 20,
-                        "color": "Gray",
-                    },
-                    {
-                        "sku": "BED-LARGE",
-                        "size": "Large",
-                        "price": 119.99,
-                        "stock": 10,
-                        "color": "Black",
-                    },
-                ],
-                "attributes": {"Material": "Fabric"},
-                "characteristics": [
-                    {"label": "Animal", "value": "Dogs"},
-                    {"label": "Brand", "value": "PetLux"},
-                    {"label": "Product group", "value": "Beds"},
-                    {"label": "Material", "value": "Fabric"},
-                ],
-            },
-            {
-                "name": "Indoor Cat Formula",
-                "slug": "indoor-cat-formula",
-                "description": "Specially formulated for indoor cats to maintain healthy weight",
-                "short_description": "Dry food for indoor cats",
-                "category": cat_dry_food,
-                "brand": brands["hills-science-diet"],
-                "images": [
-                    "https://images.unsplash.com/photo-1608848461950-0fe51dfc41cb?w=600&h=600&fit=crop"
-                ],
-                "variants": [
-                    {
-                        "sku": "CAT-FOOD-1.5KG",
-                        "size": "1.5kg",
-                        "price": 22.99,
-                        "stock": 40,
-                    },
-                    {"sku": "CAT-FOOD-3KG", "size": "3kg", "price": 38.99, "stock": 25},
-                    {"sku": "CAT-FOOD-7KG", "size": "7kg", "price": 65.99, "stock": 15},
-                ],
-                "attributes": {"Flavor": "Salmon", "Age": "Adult"},
-                "characteristics": [
-                    {"label": "Animal", "value": "Cats"},
-                    {"label": "Brand", "value": "Hill's Science Diet"},
-                    {"label": "Product group", "value": "Dry food"},
-                    {"label": "Age", "value": "Adult"},
-                    {"label": "Flavor", "value": "Salmon"},
-                ],
-                "typical_analysis": [
-                    {"label": "Protein", "value": "27%"},
-                    {"label": "Fat", "value": "13%"},
-                    {"label": "Fiber", "value": "5%"},
-                    {"label": "Moisture", "value": "9%"},
-                ],
-                "feeding_guidelines": [
-                    {
-                        "pet_weight": "2 kg",
-                        "active_lifestyle": "45 g",
-                        "sedentary_lifestyle": "38 g",
-                        "overweight": "34 g",
-                    },
-                    {
-                        "pet_weight": "4 kg",
-                        "active_lifestyle": "75 g",
-                        "sedentary_lifestyle": "64 g",
-                        "overweight": "58 g",
-                    },
-                    {
-                        "pet_weight": "6 kg",
-                        "active_lifestyle": "100 g",
-                        "sedentary_lifestyle": "85 g",
-                        "overweight": "77 g",
-                    },
-                ],
-            },
-            {
-                "name": "Gourmet Wet Food Variety Pack",
-                "slug": "gourmet-wet-food-variety-pack",
-                "description": "Assorted flavors in convenient single-serve pouches",
-                "short_description": "Wet food variety pack for cats",
-                "category": cat_wet_food,
-                "brand": brands["acme-pet-supplies"],
-                "images": [
-                    "https://images.unsplash.com/photo-1576675466969-38eeae4b41f6?w=600&h=600&fit=crop"
-                ],
-                "variants": [
-                    {
-                        "sku": "WET-12PACK",
-                        "size": "12-pack",
-                        "price": 24.99,
-                        "stock": 50,
-                    },
-                    {
-                        "sku": "WET-24PACK",
-                        "size": "24-pack",
-                        "price": 42.99,
-                        "stock": 30,
-                    },
-                    {
-                        "sku": "WET-48PACK",
-                        "size": "48-pack",
-                        "price": 78.99,
-                        "stock": 20,
-                    },
-                ],
-                "attributes": {"Flavor": "Assorted", "Age": "All Life Stages"},
-                "characteristics": [
-                    {"label": "Animal", "value": "Cats"},
-                    {"label": "Brand", "value": "Acme Pet Supplies"},
-                    {"label": "Product group", "value": "Wet food"},
-                    {"label": "Flavor", "value": "Assorted"},
-                ],
-                "typical_analysis": [
-                    {"label": "Protein", "value": "10%"},
-                    {"label": "Fat", "value": "5%"},
-                    {"label": "Moisture", "value": "78%"},
-                ],
-            },
-            {
-                "name": "Feather Teaser Wand",
-                "slug": "feather-teaser-wand",
-                "description": "Interactive wand toy with colorful feathers to stimulate natural hunting instincts",
-                "short_description": "Interactive wand toy for cats",
-                "category": cat_toys,
-                "brand": brands["petsafe"],
-                "images": [
-                    "https://images.unsplash.com/photo-1548192746-dd526f154ed9?w=600&h=600&fit=crop"
-                ],
-                "variants": [
-                    {
-                        "sku": "WAND-FEATHER",
-                        "color": "Multicolor",
-                        "price": 11.99,
-                        "stock": 70,
-                    },
-                    {"sku": "WAND-MOUSE", "color": "Gray", "price": 12.99, "stock": 50},
-                    {"sku": "WAND-BELL", "color": "Red", "price": 10.99, "stock": 60},
-                ],
-                "attributes": {"Material": "Fabric"},
-                "characteristics": [
-                    {"label": "Animal", "value": "Cats"},
-                    {"label": "Brand", "value": "PetSafe"},
-                    {"label": "Product group", "value": "Toys"},
-                    {"label": "Material", "value": "Fabric"},
-                ],
-            },
-            {
-                "name": "Clumping Cat Litter",
-                "slug": "clumping-cat-litter",
-                "description": "Low-dust, fast-clumping litter with odor control",
-                "short_description": "Clumping litter with odor control",
-                "category": cat_litter,
-                "brand": brands["vetcare"],
-                "images": [
-                    "https://images.unsplash.com/photo-1591946614720-90a587da4a36?w=600&h=600&fit=crop"
-                ],
-                "variants": [
-                    {"sku": "LITTER-4KG", "size": "4kg", "price": 12.99, "stock": 80},
-                    {"sku": "LITTER-8KG", "size": "8kg", "price": 18.99, "stock": 45},
-                    {"sku": "LITTER-16KG", "size": "16kg", "price": 32.99, "stock": 25},
-                ],
-                "attributes": {"Material": "Clay", "Color": "White"},
-                "characteristics": [
-                    {"label": "Animal", "value": "Cats"},
-                    {"label": "Brand", "value": "VetCare"},
-                    {"label": "Product group", "value": "Litter"},
-                    {"label": "Material", "value": "Clay"},
-                    {"label": "Color", "value": "White"},
-                ],
-            },
-        ]
-
-        for product_data in products:
-            self.create_product_with_variants(product_data)
-
-    def create_product_with_variants(self, product_data):
-        content_blocks = self.build_content_blocks(product_data)
-
-        product, created = Product.objects.get_or_create(
-            slug=product_data["slug"],
-            category=product_data["category"],
-            defaults={
-                "name": product_data["name"],
-                "description": product_data["description"],
-                "short_description": product_data["short_description"],
-                "brand": product_data["brand"],
-                "rating": 0.0,
-                "review_count": 0,
-                "is_active": True,
-                "content_blocks": content_blocks,
-            },
-        )
-
-        if not created:
-            product.name = product_data["name"]
-            product.description = product_data["description"]
-            product.short_description = product_data["short_description"]
-            product.brand = product_data["brand"]
-            product.is_active = True
-            product.content_blocks = content_blocks
-            product.save(
-                update_fields=[
-                    "name",
-                    "description",
-                    "short_description",
-                    "brand",
-                    "is_active",
-                    "content_blocks",
-                    "updated_at",
-                ]
-            )
-
-        if created:
-            self.stdout.write(f"✅ Created product: {product.name}")
-        else:
-            self.stdout.write(f"✅ Updated product: {product.name}")
-
-        product_images = product_data.get("images", [])
-
-        for i, image_url in enumerate(product_images):
-            is_main = i == 0
-
-            ProductImage.objects.get_or_create(
-                product=product,
-                variant=None,
-                image_url=image_url,
+        for attribute_data in NUMERIC_ATTRIBUTES:
+            attribute, created = ProductAttribute.objects.get_or_create(
+                slug=attribute_data["slug"],
                 defaults={
-                    "alt_text": f"{product.name} - Image {i + 1}",
-                    "is_main": is_main,
-                    "display_order": i,
+                    "name": attribute_data["name"],
+                    "type": ProductAttribute.AttributeType.NUMERIC,
+                    "available_units": attribute_data["available_units"],
+                    "filterable": True,
                 },
             )
 
-            if is_main:
-                product.main_image = image_url
-                product.save(update_fields=["main_image"])
+            update_fields = []
 
-        for index, variant_data in enumerate(product_data["variants"]):
-            old_price = variant_data.get("old_price")
-            price = Decimal(str(variant_data["price"]))
+            if attribute.name != attribute_data["name"]:
+                attribute.name = attribute_data["name"]
+                update_fields.append("name")
 
-            if old_price is not None:
-                old_price = Decimal(str(old_price))
-                if old_price <= price:
-                    old_price = None
+            if attribute.type != ProductAttribute.AttributeType.NUMERIC:
+                attribute.type = ProductAttribute.AttributeType.NUMERIC
+                update_fields.append("type")
 
-            variant, variant_created = ProductVariant.objects.get_or_create(
-                sku=variant_data["sku"],
-                defaults={
-                    "product": product,
-                    "price": price,
-                    "old_price": old_price,
-                    "stock": variant_data["stock"],
-                    "is_active": True,
-                    "is_default": index == 0,
-                },
-            )
+            if attribute.available_units != attribute_data["available_units"]:
+                attribute.available_units = attribute_data["available_units"]
+                update_fields.append("available_units")
 
-            if not variant_created and variant.product_id == product.id:
-                variant.price = price
-                variant.old_price = old_price
-                variant.stock = variant_data["stock"]
-                variant.is_active = True
-                variant.is_default = index == 0
-                variant.save()
+            if not attribute.filterable:
+                attribute.filterable = True
+                update_fields.append("filterable")
 
-            if "size" in variant_data:
-                self.attach_variant_attribute(variant, "Size", variant_data["size"])
+            if update_fields:
+                attribute.save(update_fields=update_fields)
 
-            if "color" in variant_data:
-                self.attach_variant_attribute(variant, "Color", variant_data["color"])
+            touched_count += 1
 
-            for attr_name, attr_value in product_data.get("attributes", {}).items():
-                self.attach_variant_attribute(variant, attr_name, attr_value)
+            if created:
+                self.stdout.write(f"✅ Created numeric attribute: {attribute.name}")
 
-            if product_images:
-                variant_image_url = variant_data.get("image_url") or product_images[0]
-
-                ProductImage.objects.get_or_create(
-                    product=product,
-                    variant=variant,
-                    image_url=variant_image_url,
-                    defaults={
-                        "alt_text": f"{product.name} - {variant.sku}",
-                        "is_main": True,
-                        "display_order": 0,
-                    },
-                )
-
-            if variant_created:
-                self.stdout.write(f"   ✅ Created variant: {variant.sku}")
-            else:
-                self.stdout.write(f"   ✅ Updated variant: {variant.sku}")
-
-    def build_content_blocks(self, product_data):
-        blocks = []
-
-        characteristics = product_data.get("characteristics", [])
-        if characteristics:
-            blocks.append(
-                {
-                    "key": "characteristics",
-                    "type": "key_value",
-                    "title": "Characteristics",
-                    "content": {
-                        "items": [
-                            {
-                                "key": item["label"],
-                                "value": item["value"],
-                            }
-                            for item in characteristics
-                        ]
-                    },
-                }
-            )
-
-        typical_analysis = product_data.get("typical_analysis", [])
-        if typical_analysis:
-            blocks.append(
-                {
-                    "key": "typical_analysis",
-                    "type": "key_value",
-                    "title": "Typical Analysis",
-                    "content": {
-                        "items": [
-                            {
-                                "key": item["label"],
-                                "value": item["value"],
-                            }
-                            for item in typical_analysis
-                        ]
-                    },
-                }
-            )
-
-        feeding_guidelines = product_data.get("feeding_guidelines", [])
-        if feeding_guidelines:
-            blocks.append(
-                {
-                    "key": "feeding_guidelines",
-                    "type": "table",
-                    "title": "Feeding Guidelines",
-                    "content": {
-                        "columns": [
-                            {"id": "pet_weight", "title": "Pet weight"},
-                            {"id": "active_lifestyle", "title": "Active lifestyle"},
-                            {
-                                "id": "sedentary_lifestyle",
-                                "title": "Sedentary lifestyle",
-                            },
-                            {"id": "overweight", "title": "Overweight"},
-                        ],
-                        "rows": feeding_guidelines,
-                    },
-                }
-            )
-
-        return blocks
-
-    def attach_variant_attribute(self, variant, attribute_name, raw_value):
-        if raw_value is None:
-            return
-
-        value = str(raw_value).strip()
-
-        if not value:
-            return
-
-        attribute, _ = ProductAttribute.objects.get_or_create(
-            slug=slugify(attribute_name),
-            defaults={
-                "name": attribute_name,
-                "filterable": True,
-            },
-        )
-
-        attribute_value, _ = ProductAttributeValue.objects.get_or_create(
-            attribute=attribute,
-            value=value,
-            defaults={"slug": "", "display_order": 0},
-        )
-
-        ProductVariantAttribute.objects.update_or_create(
-            variant=variant,
-            attribute=attribute,
-            defaults={"value": attribute_value},
-        )
-
-    def create_sample_reviews(self, users=None):
-        ProductReview.objects.all().delete()
-
-        sample_reviews = [
-            {
-                "rating": 5,
-                "title": "Excellent product!",
-                "comment": "Very good quality, my pet really likes it.",
-                "is_verified": True,
-            },
-            {
-                "rating": 4,
-                "title": "Good quality",
-                "comment": "Overall I'm satisfied, would buy again.",
-                "is_verified": True,
-            },
-            {
-                "rating": 3,
-                "title": "Average",
-                "comment": "It's okay, but I expected a bit more.",
-                "is_verified": False,
-            },
-        ]
-
-        products = Product.objects.filter(is_active=True)
-        users = users or []
-        total_reviews_created = 0
-
-        for product in products:
-            for i, review_data in enumerate(sample_reviews):
-                ProductReview.objects.create(
-                    product=product,
-                    user=users[i % len(users)] if users else None,
-                    rating=review_data["rating"],
-                    title=review_data["title"],
-                    comment=review_data["comment"],
-                    is_verified=review_data["is_verified"],
-                    is_active=True,
-                )
-                total_reviews_created += 1
-
-            self.sync_product_review_stats(product)
-
-        self.stdout.write(f"✅ Created {total_reviews_created} sample reviews")
-
-    def print_review_summary(self):
-        self.stdout.write("\n📝 Review summary:")
-        products = Product.objects.filter(is_active=True)[:5]
-
-        for product in products:
-            active_reviews = ProductReview.objects.filter(
-                product=product,
-                is_active=True,
-            ).count()
-
-            self.stdout.write(
-                f"   {product.name} | rating={product.rating} | "
-                f"review_count={product.review_count} | actual_reviews={active_reviews}"
-            )
-
-    def print_testing_info(self):
-        self.stdout.write("\n" + "=" * 60)
-        self.stdout.write("🎯 API TESTING INFORMATION FOR FRONTEND DEVELOPERS")
-        self.stdout.write("=" * 60)
-
-        sample_product = Product.objects.filter(is_active=True).first()
-        product_id = sample_product.id if sample_product else "product-uuid-here"
-
-        test_urls = [
-            "GET /api/dashboard",
-            "GET /api/dogs/",
-            "GET /api/cats/",
-            "GET /api/dogs/food/",
-            "GET /api/dogs/food/dry-food/",
-            "GET /api/cats/food/wet-food/",
-            "GET /api/dogs/food/products/",
-            "GET /api/cats/home-comfort/products/",
-            "GET /api/products",
-            f"GET /api/products/{product_id}",
-            f"GET /api/products/{product_id}/related",
-            "GET /api/products/search/?q=dog",
-            "GET /api/brands",
-            "GET /api/brands/royal-canin",
-        ]
-
-        self.stdout.write("\n📋 API endpoints for testing:")
-        for url in test_urls:
-            self.stdout.write(f"   {url}")
-
-        self.stdout.write("\n📊 Statistics:")
-        self.stdout.write(f"   Total animal types: {AnimalType.objects.count()}")
-        self.stdout.write(f"   Total categories: {Category.objects.count()}")
-        self.stdout.write(f"   Total brands: {Brand.objects.count()}")
-        self.stdout.write(f"   Total products: {Product.objects.count()}")
-        self.stdout.write(f"   Total variants: {ProductVariant.objects.count()}")
-        self.stdout.write(f"   Total reviews: {ProductReview.objects.count()}")
-        self.stdout.write(f"   Total users: {Customer.objects.count()}")
-
-        self.stdout.write("\n🔗 Sample product for testing:")
-        if sample_product:
-            self.stdout.write(f"   Product ID: {sample_product.id}")
-            self.stdout.write(f"   Name: {sample_product.name}")
-            self.stdout.write(f"   URL: /api/products/{sample_product.id}")
-
-        self.stdout.write("\n💡 content_blocks structure now looks like:")
-        self.stdout.write('   "content_blocks": [')
-        self.stdout.write("       {")
-        self.stdout.write('           "key": "characteristics",')
-        self.stdout.write('           "type": "key_value",')
-        self.stdout.write('           "title": "Characteristics",')
-        self.stdout.write('           "content": {')
-        self.stdout.write('               "items": [')
-        self.stdout.write('                   {"key": "Animal", "value": "Dogs"},')
-        self.stdout.write('                   {"key": "Brand", "value": "Royal Canin"}')
-        self.stdout.write("               ]")
-        self.stdout.write("           }")
-        self.stdout.write("       }")
-        self.stdout.write("   ]")
-
-        self.stdout.write("\n💡 Quick test examples:")
-        self.stdout.write("   curl http://localhost:8000/api/dashboard")
-        self.stdout.write("   curl http://localhost:8000/api/products")
-        self.stdout.write(f"   curl http://localhost:8000/api/products/{product_id}")
-
-        self.stdout.write("\n" + "=" * 60)
-        self.stdout.write(
-            self.style.SUCCESS("🎉 All initial data loaded successfully!")
-        )
-        self.stdout.write("=" * 60)
+        return touched_count
