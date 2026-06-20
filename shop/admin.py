@@ -432,10 +432,7 @@ class ProductVariantAttributeForm(forms.ModelForm):
             return cleaned_data
 
         if attribute.type == ProductAttribute.AttributeType.SELECT:
-            if not value:
-                raise forms.ValidationError("Select attribute requires value.")
-
-            if value.attribute_id != attribute.id:
+            if value and value.attribute_id != attribute.id:
                 raise forms.ValidationError(
                     "Selected value does not belong to selected attribute."
                 )
@@ -444,13 +441,29 @@ class ProductVariantAttributeForm(forms.ModelForm):
             cleaned_data["unit"] = ""
 
         elif attribute.type == ProductAttribute.AttributeType.NUMERIC:
-            if value_numeric is None:
-                raise forms.ValidationError("Numeric attribute requires numeric value.")
+            if value:
+                raise forms.ValidationError(
+                    "Text value must be empty for numeric attribute."
+                )
 
-            if not unit:
-                raise forms.ValidationError("Numeric attribute requires unit.")
+            has_numeric_value = value_numeric is not None
+            has_unit = bool(unit)
 
-            if attribute.available_units and unit not in attribute.available_units:
+            if has_numeric_value and not has_unit:
+                raise forms.ValidationError(
+                    "Unit is required when numeric value is filled."
+                )
+
+            if has_unit and not has_numeric_value:
+                raise forms.ValidationError(
+                    "Numeric value is required when unit is filled."
+                )
+
+            if (
+                unit
+                and attribute.available_units
+                and unit not in attribute.available_units
+            ):
                 raise forms.ValidationError(
                     f"Unit '{unit}' is not allowed for {attribute.name}."
                 )
@@ -971,9 +984,63 @@ class ProductVariantAttributeInline(StackedInline):
         "value_numeric",
         "unit",
     )
+    show_change_link = True
+    verbose_name = "Variant attribute"
+    verbose_name_plural = "Variant attributes"
 
     class Media:
         js = ("shop/admin/js/product_variant_attribute_inline.js",)
+
+    def get_product_id_for_initial_structure(self, request, obj=None):
+        if obj and obj.pk:
+            return obj.product_id
+
+        return request.GET.get("product")
+
+    def get_initial_attribute_ids(self, request, obj=None):
+        product_id = self.get_product_id_for_initial_structure(request, obj)
+
+        if not product_id:
+            return []
+
+        return list(
+            ProductAttribute.objects.filter(
+                variant_attributes__variant__product_id=product_id,
+            )
+            .distinct()
+            .order_by("display_order", "name")
+            .values_list("id", flat=True)
+        )
+
+    def get_extra(self, request, obj=None, **kwargs):
+        if obj and obj.pk:
+            return 1
+
+        initial_attribute_ids = self.get_initial_attribute_ids(request, obj)
+
+        return len(initial_attribute_ids) or 1
+
+    def get_formset(self, request, obj=None, **kwargs):
+        formset_class = super().get_formset(request, obj, **kwargs)
+        initial_attribute_ids = self.get_initial_attribute_ids(request, obj)
+
+        if obj and obj.pk:
+            return formset_class
+
+        class ProductVariantAttributeInitialFormSet(formset_class):
+            def __init__(self, *args, **formset_kwargs):
+                if initial_attribute_ids:
+                    formset_kwargs.setdefault(
+                        "initial",
+                        [
+                            {"attribute": attribute_id}
+                            for attribute_id in initial_attribute_ids
+                        ],
+                    )
+
+                super().__init__(*args, **formset_kwargs)
+
+        return ProductVariantAttributeInitialFormSet
 
 
 class ProductVariantImagesInline(TabularInline):

@@ -1308,9 +1308,6 @@ class ProductVariantAttribute(models.Model):
 
         if self.attribute_id:
             if self.attribute.type == ProductAttribute.AttributeType.SELECT:
-                if not self.value_id:
-                    errors["value"] = "Value is required for select attribute."
-
                 if self.value_numeric is not None:
                     errors["value_numeric"] = (
                         "Numeric value must be empty for select attribute."
@@ -1323,13 +1320,16 @@ class ProductVariantAttribute(models.Model):
                 if self.value_id:
                     errors["value"] = "Text value must be empty for numeric attribute."
 
-                if self.value_numeric is None:
-                    errors["value_numeric"] = (
-                        "Numeric value is required for numeric attribute."
-                    )
+                has_numeric_value = self.value_numeric is not None
+                has_unit = bool(self.unit)
 
-                if not self.unit:
-                    errors["unit"] = "Unit is required for numeric attribute."
+                if has_numeric_value and not has_unit:
+                    errors["unit"] = "Unit is required when numeric value is filled."
+
+                if has_unit and not has_numeric_value:
+                    errors["value_numeric"] = (
+                        "Numeric value is required when unit is filled."
+                    )
 
                 if self.unit:
                     supported_units = {
