@@ -1,7 +1,7 @@
 from datetime import timedelta
 
 import cloudinary.uploader
-from django.db.models import F, Prefetch, Q
+from django.db.models import Avg, Count, F, Prefetch, Q
 from django.http import Http404, HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
@@ -36,6 +36,8 @@ from .serializers import (
     LoginSerializer,
     ProductCardSerializer,
     ProductDetailSerializer,
+    ProductReviewCreateSerializer,
+    ProductReviewItemSerializer,
     UserRegisterSerializer,
 )
 
@@ -119,6 +121,17 @@ def get_product_detail_queryset():
             ),
         ),
     )
+
+
+def update_product_review_stats(product):
+    stats = product.reviews.filter(is_active=True).aggregate(
+        avg_rating=Avg("rating"),
+        review_count=Count("id"),
+    )
+
+    product.rating = stats["avg_rating"] or 0
+    product.review_count = stats["review_count"] or 0
+    product.save(update_fields=["rating", "review_count"])
 
 
 def get_category_by_path(animal_type_slug: str, category_path: str) -> Category:
@@ -371,6 +384,49 @@ class ProductDetailView(generics.RetrieveAPIView):
 
     def get_queryset(self):
         return get_product_detail_queryset()
+
+
+class ProductReviewCreateView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_description="Create product review",
+        request_body=ProductReviewCreateSerializer,
+        responses={
+            201: ProductReviewItemSerializer,
+            400: "Bad Request",
+            401: "Unauthorized",
+            404: "Product not found",
+        },
+    )
+    def post(self, request, product_id):
+        product = get_object_or_404(
+            Product,
+            id=product_id,
+            is_active=True,
+        )
+
+        serializer = ProductReviewCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        review = serializer.save(
+            product=product,
+            user=request.user,
+            is_active=True,
+            is_verified=False,
+        )
+
+        update_product_review_stats(product)
+
+        response_serializer = ProductReviewItemSerializer(
+            review,
+            context={"request": request},
+        )
+
+        return Response(
+            response_serializer.data,
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class DashboardView(APIView):

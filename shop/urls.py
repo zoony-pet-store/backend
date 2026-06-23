@@ -20,6 +20,11 @@ urlpatterns = [
         name="product-detail",
     ),
     path(
+        "products/<uuid:product_id>/reviews",
+        views.ProductReviewCreateView.as_view(),
+        name="product-review-create",
+    ),
+    path(
         "products/<uuid:product_id>/related",
         views.RelatedProductsView.as_view(),
         name="related-products",

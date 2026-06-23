@@ -593,6 +593,47 @@ class ProductReviewSerializer(serializers.ModelSerializer):
         read_only_fields = ["user"]
 
 
+class ProductReviewCreateSerializer(serializers.ModelSerializer):
+    title = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=200,
+    )
+
+    class Meta:
+        model = ProductReview
+        fields = [
+            "rating",
+            "title",
+            "comment",
+        ]
+
+    def validate_rating(self, value):
+        if value < 1 or value > 5:
+            raise serializers.ValidationError("Rating must be between 1 and 5.")
+
+        return value
+
+    def validate_comment(self, value):
+        value = value.strip()
+
+        if not value:
+            raise serializers.ValidationError("Comment is required.")
+
+        return value
+
+    def create(self, validated_data):
+        comment = validated_data.get("comment", "")
+        title = validated_data.get("title", "").strip()
+
+        if not title:
+            title = comment[:80] or "Product review"
+
+        validated_data["title"] = title
+
+        return super().create(validated_data)
+
+
 class ProductCardSerializer(serializers.ModelSerializer):
     brand = serializers.SerializerMethodField()
     image_url = serializers.SerializerMethodField()
