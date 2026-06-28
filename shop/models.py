@@ -1576,6 +1576,9 @@ class ProductReview(models.Model):
     title = models.CharField(max_length=200)
     comment = models.TextField()
 
+    positive_comment = models.TextField(blank=True, null=True)
+    negative_comment = models.TextField(blank=True, null=True)
+
     is_verified = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
 

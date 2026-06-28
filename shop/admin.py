@@ -1892,7 +1892,14 @@ class ProductReviewAdmin(ModelAdmin):
     )
     list_select_related = ("product", "user")
     list_filter = ("is_active", "is_verified", "rating", "created_at")
-    search_fields = ("product__name", "user__email", "title", "comment")
+    search_fields = (
+        "product__name",
+        "user__email",
+        "title",
+        "comment",
+        "positive_comment",
+        "negative_comment",
+    )
     autocomplete_fields = ("product", "user")
     readonly_fields = ("created_at", "updated_at")
     date_hierarchy = "created_at"
@@ -1911,6 +1918,8 @@ class ProductReviewAdmin(ModelAdmin):
                     "is_active",
                     "title",
                     "comment",
+                    "positive_comment",
+                    "negative_comment",
                 )
             },
         ),

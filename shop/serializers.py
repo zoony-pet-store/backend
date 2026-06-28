@@ -529,8 +529,6 @@ class ProductVariantCardSerializer(serializers.ModelSerializer):
 class ProductReviewItemSerializer(serializers.ModelSerializer):
     username = serializers.SerializerMethodField()
     image_urls = serializers.SerializerMethodField()
-    positive_comment = serializers.SerializerMethodField()
-    negative_comment = serializers.SerializerMethodField()
 
     class Meta:
         model = ProductReview
@@ -541,6 +539,7 @@ class ProductReviewItemSerializer(serializers.ModelSerializer):
             "rating",
             "image_urls",
             "updated_at",
+            "title",
             "comment",
             "positive_comment",
             "negative_comment",
@@ -565,14 +564,6 @@ class ProductReviewItemSerializer(serializers.ModelSerializer):
         del obj
         return []
 
-    def get_positive_comment(self, obj):
-        del obj
-        return None
-
-    def get_negative_comment(self, obj):
-        del obj
-        return None
-
 
 class ProductReviewSerializer(serializers.ModelSerializer):
     user_name = serializers.CharField(source="user.get_full_name", read_only=True)
@@ -586,6 +577,8 @@ class ProductReviewSerializer(serializers.ModelSerializer):
             "rating",
             "title",
             "comment",
+            "positive_comment",
+            "negative_comment",
             "is_verified",
             "created_at",
             "updated_at",
@@ -594,10 +587,29 @@ class ProductReviewSerializer(serializers.ModelSerializer):
 
 
 class ProductReviewCreateSerializer(serializers.ModelSerializer):
+    rating = serializers.IntegerField(
+        min_value=1,
+        max_value=5,
+    )
     title = serializers.CharField(
         required=False,
         allow_blank=True,
         max_length=200,
+    )
+    comment = serializers.CharField(
+        required=True,
+        allow_blank=False,
+        min_length=1,
+    )
+    positive_comment = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+    )
+    negative_comment = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        allow_null=True,
     )
 
     class Meta:
@@ -606,13 +618,9 @@ class ProductReviewCreateSerializer(serializers.ModelSerializer):
             "rating",
             "title",
             "comment",
+            "positive_comment",
+            "negative_comment",
         ]
-
-    def validate_rating(self, value):
-        if value < 1 or value > 5:
-            raise serializers.ValidationError("Rating must be between 1 and 5.")
-
-        return value
 
     def validate_comment(self, value):
         value = value.strip()
@@ -621,6 +629,20 @@ class ProductReviewCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Comment is required.")
 
         return value
+
+    def validate_positive_comment(self, value):
+        if value is None:
+            return None
+
+        value = value.strip()
+        return value or None
+
+    def validate_negative_comment(self, value):
+        if value is None:
+            return None
+
+        value = value.strip()
+        return value or None
 
     def create(self, validated_data):
         comment = validated_data.get("comment", "")
