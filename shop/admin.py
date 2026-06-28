@@ -1531,16 +1531,6 @@ class ProductAdmin(ModelAdmin):
             },
         ),
         (
-            "Product variant management",
-            {
-                "fields": ("add_variant_link",),
-                "description": (
-                    "Variants are shown below as a compact list. "
-                    "Use the button to add a new variant for this product."
-                ),
-            },
-        ),
-        (
             "Advanced custom content blocks",
             {
                 "fields": ("content_blocks",),
@@ -1562,6 +1552,16 @@ class ProductAdmin(ModelAdmin):
             {
                 "fields": ("created_at", "updated_at"),
                 "classes": ("collapse",),
+            },
+        ),
+        (
+            "Product variant management",
+            {
+                "fields": ("add_variant_link",),
+                "description": (
+                    "Variants are shown below as a compact list. "
+                    "Use the button to add a new variant for this product."
+                ),
             },
         ),
     )
