@@ -384,7 +384,28 @@ class AttributeValueSelectWidget(forms.Select):
         return option
 
 
+def get_unit_choices_for_attribute(attribute=None):
+    unit_choices = list(ProductAttribute.UNIT_CHOICES)
+
+    if (
+        attribute
+        and attribute.type == ProductAttribute.AttributeType.NUMERIC
+        and attribute.available_units
+    ):
+        allowed_units = set(attribute.available_units)
+        unit_choices = [
+            (unit, label) for unit, label in unit_choices if unit in allowed_units
+        ]
+
+    return [("", "---------")] + unit_choices
+
+
 class ProductVariantAttributeForm(forms.ModelForm):
+    unit = forms.ChoiceField(
+        required=False,
+        choices=[("", "---------")] + ProductAttribute.UNIT_CHOICES,
+    )
+
     class Meta:
         model = ProductVariantAttribute
         fields = "__all__"
@@ -419,6 +440,36 @@ class ProductVariantAttributeForm(forms.ModelForm):
         self.fields["value"].widget.value_map = {
             str(attribute_value.pk): attribute_value for attribute_value in values
         }
+
+        selected_attribute_id = None
+
+        if self.data:
+            selected_attribute_id = self.data.get(self.add_prefix("attribute"))
+
+        if not selected_attribute_id and self.initial.get("attribute"):
+            selected_attribute_id = self.initial.get("attribute")
+
+        if (
+            not selected_attribute_id
+            and self.instance
+            and self.instance.pk
+            and self.instance.attribute_id
+        ):
+            selected_attribute_id = self.instance.attribute_id
+
+        selected_attribute = None
+
+        if selected_attribute_id:
+            selected_attribute = next(
+                (
+                    attribute
+                    for attribute in attributes
+                    if str(attribute.pk) == str(selected_attribute_id)
+                ),
+                None,
+            )
+
+        self.fields["unit"].choices = get_unit_choices_for_attribute(selected_attribute)
 
     def clean(self):
         cleaned_data = super().clean()

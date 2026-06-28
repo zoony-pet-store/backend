@@ -876,10 +876,6 @@ class ProductCardSerializer(serializers.ModelSerializer):
                         "values": [],
                     }
 
-                    if attribute.type == ProductAttribute.AttributeType.NUMERIC:
-                        attributes[attr_name]["units"] = attribute.available_units or []
-                        attributes[attr_name]["ranges_by_unit"] = {}
-
                 if attribute.type == ProductAttribute.AttributeType.NUMERIC:
                     if item.value_numeric is None:
                         continue
@@ -900,46 +896,6 @@ class ProductCardSerializer(serializers.ModelSerializer):
 
                     if value_key not in existing_value_keys:
                         attributes[attr_name]["values"].append(value_data)
-
-                    unit = item.unit or ""
-                    ranges_by_unit = attributes[attr_name]["ranges_by_unit"]
-
-                    if unit not in ranges_by_unit:
-                        ranges_by_unit[unit] = {
-                            "min": value_data["value"],
-                            "max": value_data["value"],
-                            "min_decimal": value_data["value_decimal"],
-                            "max_decimal": value_data["value_decimal"],
-                        }
-                    else:
-                        current_min = ranges_by_unit[unit]["min"]
-                        current_max = ranges_by_unit[unit]["max"]
-                        current_value = value_data["value"]
-
-                        if current_value is not None and (
-                            current_min is None or current_value < current_min
-                        ):
-                            ranges_by_unit[unit]["min"] = current_value
-                            ranges_by_unit[unit]["min_decimal"] = value_data[
-                                "value_decimal"
-                            ]
-
-                        if current_value is not None and (
-                            current_max is None or current_value > current_max
-                        ):
-                            ranges_by_unit[unit]["max"] = current_value
-                            ranges_by_unit[unit]["max_decimal"] = value_data[
-                                "value_decimal"
-                            ]
-
-                    used_units = {
-                        value.get("unit")
-                        for value in attributes[attr_name]["values"]
-                        if value.get("unit")
-                    }
-
-                    if not attributes[attr_name]["units"]:
-                        attributes[attr_name]["units"] = sorted(used_units)
 
                     continue
 
