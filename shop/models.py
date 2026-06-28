@@ -1,4 +1,5 @@
 import uuid
+from decimal import Decimal
 
 from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.core.exceptions import ValidationError
@@ -969,6 +970,36 @@ def format_numeric_attribute_value(value):
     return display_value
 
 
+UNIT_BASE_CONVERSIONS = {
+    "g": ("g", Decimal("1")),
+    "kg": ("g", Decimal("1000")),
+    "ml": ("ml", Decimal("1")),
+    "l": ("ml", Decimal("1000")),
+    "mm": ("mm", Decimal("1")),
+    "cm": ("mm", Decimal("10")),
+    "m": ("mm", Decimal("1000")),
+    # Do not convert pack to pcs automatically.
+    # 1 pack can contain different number of items.
+    "pcs": ("pcs", Decimal("1")),
+    "pack": ("pack", Decimal("1")),
+}
+
+
+def normalize_numeric_attribute_to_base(value, unit):
+    if value is None or not unit:
+        return None, ""
+
+    conversion = UNIT_BASE_CONVERSIONS.get(unit)
+
+    if not conversion:
+        return None, ""
+
+    base_unit, multiplier = conversion
+    base_value = Decimal(str(value)) * multiplier
+
+    return base_value.quantize(Decimal("0.001")), base_unit
+
+
 def get_or_create_auto_price_badge(slug):
     badge_data = AUTO_PRICE_BADGE_DEFINITIONS[slug]
 
@@ -1231,6 +1262,27 @@ class ProductVariantAttribute(models.Model):
         help_text="Unit for numeric attributes, e.g. kg, g, ml, l.",
     )
 
+    value_numeric_base = models.DecimalField(
+        max_digits=18,
+        decimal_places=3,
+        null=True,
+        blank=True,
+        db_index=True,
+        editable=False,
+        help_text=(
+            "Normalized numeric value in base unit for filtering/sorting. "
+            "Example: 7 kg -> 7000 g."
+        ),
+    )
+
+    base_unit = models.CharField(
+        max_length=20,
+        blank=True,
+        default="",
+        editable=False,
+        help_text="Base unit for normalized numeric value, e.g. g, ml, mm.",
+    )
+
     class Meta:
         ordering = [
             "attribute__display_order",
@@ -1241,6 +1293,7 @@ class ProductVariantAttribute(models.Model):
         indexes = [
             models.Index(fields=["attribute", "value"]),
             models.Index(fields=["attribute", "value_numeric", "unit"]),
+            models.Index(fields=["attribute", "value_numeric_base", "base_unit"]),
             models.Index(fields=["variant", "attribute"]),
         ]
         constraints = [
@@ -1355,7 +1408,26 @@ class ProductVariantAttribute(models.Model):
         if errors:
             raise ValidationError(errors)
 
+    def sync_normalized_numeric_value(self):
+        if (
+            self.attribute_id
+            and self.attribute.type == ProductAttribute.AttributeType.NUMERIC
+            and self.value_numeric is not None
+            and self.unit
+        ):
+            self.value_numeric_base, self.base_unit = (
+                normalize_numeric_attribute_to_base(
+                    value=self.value_numeric,
+                    unit=self.unit,
+                )
+            )
+            return
+
+        self.value_numeric_base = None
+        self.base_unit = ""
+
     def save(self, *args, **kwargs):
+        self.sync_normalized_numeric_value()
         self.full_clean()
         super().save(*args, **kwargs)
 

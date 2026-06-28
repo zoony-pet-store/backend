@@ -42,6 +42,8 @@ def build_copied_attribute(item, variant_id):
         value_id=item.value_id,
         value_numeric=item.value_numeric,
         unit=item.unit or "",
+        value_numeric_base=item.value_numeric_base,
+        base_unit=item.base_unit or "",
     )
 
 
