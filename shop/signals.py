@@ -45,20 +45,16 @@ def sync_structure_after_attribute_saved(sender, instance, **kwargs):
         return
 
     product_id = instance.variant.product_id
-    attribute_id = instance.attribute_id
     previous_attribute_id = getattr(instance, "_previous_attribute_id", None)
 
     def sync():
-        if previous_attribute_id and previous_attribute_id != attribute_id:
+        if previous_attribute_id and previous_attribute_id != instance.attribute_id:
             remove_attribute_from_all_product_variants(
                 product_id=product_id,
                 attribute_id=previous_attribute_id,
             )
 
-        ensure_attribute_for_all_product_variants(
-            product_id=product_id,
-            attribute_id=attribute_id,
-        )
+        ensure_attribute_for_all_product_variants(instance)
 
     transaction.on_commit(sync)
 

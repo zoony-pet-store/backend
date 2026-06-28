@@ -1048,46 +1048,50 @@ class ProductVariantAttributeInline(StackedInline):
 
         return request.GET.get("product")
 
-    def get_initial_attribute_ids(self, request, obj=None):
+    def get_initial_attribute_data(self, request, obj=None):
         product_id = self.get_product_id_for_initial_structure(request, obj)
 
         if not product_id:
             return []
 
-        return list(
-            ProductAttribute.objects.filter(
-                variant_attributes__variant__product_id=product_id,
-            )
-            .distinct()
-            .order_by("display_order", "name")
-            .values_list("id", flat=True)
+        from shop.services.variant_attribute_sync import (
+            get_template_attribute_items_for_product,
         )
+
+        template_items = get_template_attribute_items_for_product(
+            product_id=product_id,
+            exclude_variant_id=obj.id if obj and obj.pk else None,
+        )
+
+        return [
+            {
+                "attribute": item.attribute_id,
+                "value": item.value_id,
+                "value_numeric": item.value_numeric,
+                "unit": item.unit,
+            }
+            for item in template_items
+        ]
 
     def get_extra(self, request, obj=None, **kwargs):
         if obj and obj.pk:
             return 1
 
-        initial_attribute_ids = self.get_initial_attribute_ids(request, obj)
+        initial_attribute_data = self.get_initial_attribute_data(request, obj)
 
-        return len(initial_attribute_ids) or 1
+        return len(initial_attribute_data) or 1
 
     def get_formset(self, request, obj=None, **kwargs):
         formset_class = super().get_formset(request, obj, **kwargs)
-        initial_attribute_ids = self.get_initial_attribute_ids(request, obj)
+        initial_attribute_data = self.get_initial_attribute_data(request, obj)
 
         if obj and obj.pk:
             return formset_class
 
         class ProductVariantAttributeInitialFormSet(formset_class):
             def __init__(self, *args, **formset_kwargs):
-                if initial_attribute_ids:
-                    formset_kwargs.setdefault(
-                        "initial",
-                        [
-                            {"attribute": attribute_id}
-                            for attribute_id in initial_attribute_ids
-                        ],
-                    )
+                if initial_attribute_data:
+                    formset_kwargs.setdefault("initial", initial_attribute_data)
 
                 super().__init__(*args, **formset_kwargs)
 

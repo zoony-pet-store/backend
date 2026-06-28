@@ -22,20 +22,82 @@ def disable_variant_attribute_sync():
         _sync_state.disabled = previous_value
 
 
-def get_product_structure_attribute_ids(product_id):
-    return list(
-        ProductAttribute.objects.filter(
-            variant_attributes__variant__product_id=product_id,
-        )
-        .distinct()
-        .order_by("display_order", "name")
-        .values_list("id", flat=True)
+def has_attribute_value(item):
+    if not item:
+        return False
+
+    if item.attribute.type == ProductAttribute.AttributeType.SELECT:
+        return bool(item.value_id)
+
+    if item.attribute.type == ProductAttribute.AttributeType.NUMERIC:
+        return item.value_numeric is not None and bool(item.unit)
+
+    return False
+
+
+def build_copied_attribute(item, variant_id):
+    return ProductVariantAttribute(
+        variant_id=variant_id,
+        attribute_id=item.attribute_id,
+        value_id=item.value_id,
+        value_numeric=item.value_numeric,
+        unit=item.unit or "",
     )
 
 
-def ensure_attribute_for_all_product_variants(product_id, attribute_id):
-    if not product_id or not attribute_id:
+def get_template_attribute_items_for_product(product_id, exclude_variant_id=None):
+    """
+    Returns one template ProductVariantAttribute per attribute key.
+
+    Priority:
+    1. default variant first
+    2. non-empty value preferred over empty placeholder
+    3. attribute display order
+    """
+    queryset = (
+        ProductVariantAttribute.objects.filter(
+            variant__product_id=product_id,
+        )
+        .select_related("attribute", "value", "variant")
+        .order_by(
+            "-variant__is_default",
+            "variant__id",
+            "attribute__display_order",
+            "attribute__name",
+        )
+    )
+
+    if exclude_variant_id:
+        queryset = queryset.exclude(variant_id=exclude_variant_id)
+
+    template_items_by_attribute_id = {}
+
+    for item in queryset:
+        current_item = template_items_by_attribute_id.get(item.attribute_id)
+
+        if current_item is None:
+            template_items_by_attribute_id[item.attribute_id] = item
+            continue
+
+        if not has_attribute_value(current_item) and has_attribute_value(item):
+            template_items_by_attribute_id[item.attribute_id] = item
+
+    return list(template_items_by_attribute_id.values())
+
+
+def ensure_attribute_for_all_product_variants(source_item):
+    """
+    When one variant gets a new attribute, every other variant of the same product
+    should receive the same attribute with the same value.
+
+    Existing non-empty values are not overwritten.
+    Empty placeholders are filled from source_item.
+    """
+    if not source_item or not source_item.variant_id or not source_item.attribute_id:
         return
+
+    product_id = source_item.variant.product_id
+    attribute_id = source_item.attribute_id
 
     variant_ids = list(
         ProductVariant.objects.filter(product_id=product_id).values_list(
@@ -60,29 +122,49 @@ def ensure_attribute_for_all_product_variants(product_id, attribute_id):
         if variant_id not in existing_variant_ids
     ]
 
-    if not missing_variant_ids:
-        return
-
     with disable_variant_attribute_sync():
-        ProductVariantAttribute.objects.bulk_create(
-            [
-                ProductVariantAttribute(
-                    variant_id=variant_id,
-                    attribute_id=attribute_id,
-                )
-                for variant_id in missing_variant_ids
-            ],
-            ignore_conflicts=True,
-        )
+        if missing_variant_ids:
+            ProductVariantAttribute.objects.bulk_create(
+                [
+                    build_copied_attribute(
+                        item=source_item,
+                        variant_id=variant_id,
+                    )
+                    for variant_id in missing_variant_ids
+                ],
+                ignore_conflicts=True,
+            )
+
+        if has_attribute_value(source_item):
+            ProductVariantAttribute.objects.filter(
+                variant_id__in=variant_ids,
+                attribute_id=attribute_id,
+                value__isnull=True,
+                value_numeric__isnull=True,
+                unit="",
+            ).exclude(
+                pk=source_item.pk,
+            ).update(
+                value_id=source_item.value_id,
+                value_numeric=source_item.value_numeric,
+                unit=source_item.unit or "",
+            )
 
 
 def ensure_variant_has_product_structure(variant):
+    """
+    When a new variant is created, copy current product attribute structure
+    together with template values.
+    """
     if not variant or not variant.pk or not variant.product_id:
         return
 
-    attribute_ids = get_product_structure_attribute_ids(variant.product_id)
+    template_items = get_template_attribute_items_for_product(
+        product_id=variant.product_id,
+        exclude_variant_id=variant.id,
+    )
 
-    if not attribute_ids:
+    if not template_items:
         return
 
     existing_attribute_ids = set(
@@ -92,23 +174,23 @@ def ensure_variant_has_product_structure(variant):
         )
     )
 
-    missing_attribute_ids = [
-        attribute_id
-        for attribute_id in attribute_ids
-        if attribute_id not in existing_attribute_ids
+    missing_template_items = [
+        item
+        for item in template_items
+        if item.attribute_id not in existing_attribute_ids
     ]
 
-    if not missing_attribute_ids:
+    if not missing_template_items:
         return
 
     with disable_variant_attribute_sync():
         ProductVariantAttribute.objects.bulk_create(
             [
-                ProductVariantAttribute(
-                    variant=variant,
-                    attribute_id=attribute_id,
+                build_copied_attribute(
+                    item=item,
+                    variant_id=variant.id,
                 )
-                for attribute_id in missing_attribute_ids
+                for item in missing_template_items
             ],
             ignore_conflicts=True,
         )
@@ -127,16 +209,15 @@ def remove_attribute_from_all_product_variants(product_id, attribute_id):
 
 def normalize_product_variant_attribute_structure(product_id):
     """
-    Ensures all variants of one product have identical attribute keys.
-    Useful for manual cleanup or future management command.
+    Manual cleanup helper.
+
+    Ensures every variant has the same attribute keys and copies template values
+    into missing/empty rows where possible.
     """
     if not product_id:
         return
 
-    attribute_ids = get_product_structure_attribute_ids(product_id)
+    template_items = get_template_attribute_items_for_product(product_id=product_id)
 
-    for attribute_id in attribute_ids:
-        ensure_attribute_for_all_product_variants(
-            product_id=product_id,
-            attribute_id=attribute_id,
-        )
+    for item in template_items:
+        ensure_attribute_for_all_product_variants(item)
