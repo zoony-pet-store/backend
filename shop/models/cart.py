@@ -3,6 +3,8 @@ from django.db import models
 
 from .customer import Customer
 from .product_variant import ProductVariant
+
+
 class Cart(models.Model):
     """User shopping cart."""
 

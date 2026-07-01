@@ -13,6 +13,8 @@ from .badge import (
     get_or_create_auto_price_badge,
 )
 from .product import Product
+
+
 class ProductVariant(models.Model):
     """
     Concrete SKU / physical item.

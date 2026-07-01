@@ -6,6 +6,8 @@ from django.db.models import Q
 
 from .product import Product
 from .product_variant import ProductVariant
+
+
 class MediaAsset(models.Model):
     """
     Reusable image from media library.

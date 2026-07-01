@@ -4,6 +4,8 @@ from django.db import models
 from django.utils.text import slugify
 
 from .animal_type import AnimalType
+
+
 class Category(models.Model):
     """Product category with hierarchical structure."""
 

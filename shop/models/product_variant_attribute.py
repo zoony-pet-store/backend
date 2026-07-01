@@ -10,6 +10,8 @@ from .product_attribute import (
 )
 from .product_attribute_value import ProductAttributeValue
 from .product_variant import ProductVariant
+
+
 class ProductVariantAttribute(models.Model):
     """
     Attribute selected for concrete variant.

@@ -4,6 +4,8 @@ from django.db import models
 
 from .customer import Customer
 from .product import Product
+
+
 class ProductReview(models.Model):
     """Product review."""
 

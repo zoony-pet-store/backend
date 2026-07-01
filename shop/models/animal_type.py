@@ -1,6 +1,8 @@
 import uuid
 
 from django.db import models
+
+
 class AnimalType(models.Model):
     """Animal type/category, e.g. dogs, cats."""
 

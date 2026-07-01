@@ -1,5 +1,7 @@
 from django.db import models
 from django.utils.text import slugify
+
+
 class Badge(models.Model):
     """Product or variant badge, e.g. New, Sale, Bestseller."""
 

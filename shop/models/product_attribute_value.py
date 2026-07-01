@@ -5,6 +5,8 @@ from django.db import models
 from django.utils.text import slugify
 
 from .product_attribute import ProductAttribute
+
+
 class ProductAttributeValue(models.Model):
     """
     Possible predefined value for SELECT attributes, e.g. Size: S, Color: Pink.

@@ -9,6 +9,7 @@ from django_jsonform.models.fields import JSONField as JSONFormField
 from .badge import Badge
 from .brand import Brand
 from .category import Category
+
 PRODUCT_CONTENT_BLOCK_TYPES = {"text", "key_value", "table"}
 
 

@@ -6,6 +6,8 @@ from django.db import models
 from django.utils.text import slugify
 
 from .category import Category
+
+
 class ProductAttribute(models.Model):
     """
     Attribute type, e.g. Size, Color, Weight, Flavor.
