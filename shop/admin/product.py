@@ -1,4 +1,4 @@
-from urllib.parse import urlencode
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from django.contrib import admin
 from django.urls import reverse
@@ -316,3 +316,60 @@ class ProductVariantAdmin(ModelAdmin):
         return f"{obj.discount_percentage}%"
 
     discount_percentage_display.short_description = "Discount %"
+
+    def get_changeform_initial_data(self, request):
+        initial = super().get_changeform_initial_data(request)
+        product_id = request.GET.get("product")
+
+        if product_id:
+            initial["product"] = product_id
+
+        return initial
+
+    def response_add(self, request, obj, post_url_continue=None):
+        response = super().response_add(request, obj, post_url_continue)
+        return self._preserve_product_for_add_another(request, response, obj)
+
+    def response_change(self, request, obj):
+        response = super().response_change(request, obj)
+        return self._preserve_product_for_add_another(request, response, obj)
+
+    def _preserve_product_for_add_another(self, request, response, obj):
+        if "_addanother" not in request.POST:
+            return response
+
+        if not getattr(obj, "product_id", None):
+            return response
+
+        if not response.has_header("Location"):
+            return response
+
+        response["Location"] = self._add_query_param(
+            response["Location"],
+            "product",
+            str(obj.product_id),
+        )
+        return response
+
+    @staticmethod
+    def _add_query_param(url, key, value):
+        parts = urlsplit(url)
+        query_params = parse_qsl(parts.query, keep_blank_values=True)
+
+        query_params = [
+            (param_key, param_value)
+            for param_key, param_value in query_params
+            if param_key != key
+        ]
+
+        query_params.append((key, value))
+
+        return urlunsplit(
+            (
+                parts.scheme,
+                parts.netloc,
+                parts.path,
+                urlencode(query_params),
+                parts.fragment,
+            )
+        )
