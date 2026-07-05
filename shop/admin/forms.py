@@ -2,6 +2,7 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from django import forms
 from django_jsonform.widgets import JSONFormWidget
+from django.utils.html import format_html
 
 from ..models import (
     Brand,
@@ -24,15 +25,37 @@ from .helpers import (
 from .widgets import AttributeSelectWidget, AttributeValueSelectWidget
 
 
+class MediaAssetPreviewChoiceField(forms.ModelChoiceField):
+    def label_from_instance(self, obj):
+        return format_html(
+            (
+                '<span style="display:flex;align-items:center;gap:12px;">'
+                '<img src="{}" alt="{}" '
+                'style="width:72px;height:72px;object-fit:cover;'
+                'border-radius:8px;border:1px solid #ddd;" />'
+                "<span>"
+                "<strong>{}</strong><br />"
+                "<small>{}</small>"
+                "</span>"
+                "</span>"
+            ),
+            obj.image_url,
+            obj.alt_text or obj.title,
+            obj.title or "Untitled image",
+            obj.source,
+        )
+
+
 class ImageUrlAdminFormMixin(forms.ModelForm):
     image_url_field_name = ""
     image_alt_text_source_field = "name"
 
-    image_asset = forms.ModelChoiceField(
+    image_asset = MediaAssetPreviewChoiceField(
         queryset=MediaAsset.objects.none(),
         required=False,
         label="Choose from media library",
         help_text="Choose an existing image from media library.",
+        widget=forms.RadioSelect,
     )
     upload_file = forms.ImageField(
         required=False,
@@ -59,6 +82,18 @@ class ImageUrlAdminFormMixin(forms.ModelForm):
                 "Direct image URL fallback. "
                 "Usually filled automatically from uploaded/selected image."
             )
+
+        if self.instance and self.instance.pk and self.image_url_field_name:
+            image_url = getattr(self.instance, self.image_url_field_name, "")
+
+            if image_url and not self.initial.get("image_asset"):
+                matching_asset = MediaAsset.objects.filter(
+                    image_url=image_url,
+                    is_active=True,
+                ).first()
+
+                if matching_asset:
+                    self.initial["image_asset"] = matching_asset.pk
 
     def clean(self):
         cleaned_data = super().clean()
