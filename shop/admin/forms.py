@@ -4,6 +4,7 @@ from django import forms
 from django_jsonform.widgets import JSONFormWidget
 
 from ..models import (
+    Brand,
     Category,
     MediaAsset,
     Product,
@@ -21,6 +22,97 @@ from .helpers import (
     upload_image_to_cloudinary,
 )
 from .widgets import AttributeSelectWidget, AttributeValueSelectWidget
+
+
+class ImageUrlAdminFormMixin(forms.ModelForm):
+    image_url_field_name = ""
+    image_alt_text_source_field = "name"
+
+    image_asset = forms.ModelChoiceField(
+        queryset=MediaAsset.objects.none(),
+        required=False,
+        label="Choose from media library",
+        help_text="Choose an existing image from media library.",
+    )
+    upload_file = forms.ImageField(
+        required=False,
+        label="Upload new image",
+        help_text=(
+            "Upload a new image from your computer/device. "
+            "It will be uploaded to Cloudinary and saved to Media assets automatically."
+        ),
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        image_asset_field = self.fields.get("image_asset")
+
+        if isinstance(image_asset_field, forms.ModelChoiceField):
+            image_asset_field.queryset = MediaAsset.objects.filter(
+                is_active=True
+            ).order_by("-created_at", "title")
+
+        if self.image_url_field_name in self.fields:
+            self.fields[self.image_url_field_name].required = False
+            self.fields[self.image_url_field_name].help_text = (
+                "Direct image URL fallback. "
+                "Usually filled automatically from uploaded/selected image."
+            )
+
+    def clean(self):
+        cleaned_data = super().clean()
+
+        image_asset = cleaned_data.get("image_asset")
+        upload_file = cleaned_data.get("upload_file")
+
+        if image_asset and upload_file:
+            raise forms.ValidationError(
+                "Choose either an image from media library or upload a new image, not both."
+            )
+
+        return cleaned_data
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+
+        image_asset = self.cleaned_data.get("image_asset")
+        upload_file = self.cleaned_data.get("upload_file")
+        alt_text = self._get_image_alt_text(instance)
+
+        if upload_file:
+            uploaded_asset = create_media_asset_from_upload(
+                uploaded_file=upload_file,
+                alt_text=alt_text,
+            )
+            setattr(instance, self.image_url_field_name, uploaded_asset.image_url)
+
+        elif image_asset:
+            setattr(instance, self.image_url_field_name, image_asset.image_url)
+
+        elif getattr(instance, self.image_url_field_name, ""):
+            get_or_create_media_asset_from_url(
+                image_url=getattr(instance, self.image_url_field_name),
+                alt_text=alt_text,
+            )
+
+        if commit:
+            instance.save()
+            self.save_m2m()
+
+        return instance
+
+    def _get_image_alt_text(self, instance):
+        return getattr(instance, self.image_alt_text_source_field, "") or ""
+
+
+class BrandForm(ImageUrlAdminFormMixin):
+    image_url_field_name = "logo_url"
+    image_alt_text_source_field = "name"
+
+    class Meta:
+        model = Brand
+        fields = "__all__"
 
 
 class CategoryForm(forms.ModelForm):

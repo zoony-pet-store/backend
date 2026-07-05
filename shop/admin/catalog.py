@@ -4,7 +4,7 @@ from django.utils.html import format_html
 from unfold.admin import ModelAdmin
 
 from ..models import AnimalType, Badge, Brand, Category
-from .forms import CategoryForm
+from .forms import CategoryForm, BrandForm
 from .helpers import image_preview
 
 
@@ -80,10 +80,42 @@ class CategoryAdmin(ModelAdmin):
 
 @admin.register(Brand)
 class BrandAdmin(ModelAdmin):
+    form = BrandForm
+
     list_display = ("name", "is_active", "product_count", "logo")
     list_filter = ("is_active",)
     search_fields = ("name", "slug")
     ordering = ("name",)
+    readonly_fields = ("logo_preview",)
+
+    fieldsets = (
+        (
+            "Basic info",
+            {
+                "fields": (
+                    "name",
+                    "slug",
+                    "description",
+                    "is_active",
+                )
+            },
+        ),
+        (
+            "Logo",
+            {
+                "fields": (
+                    "logo_preview",
+                    "logo_url",
+                    "image_asset",
+                    "upload_file",
+                ),
+                "description": (
+                    "Use direct logo URL, choose an image from media library, "
+                    "or upload a new image from your computer."
+                ),
+            },
+        ),
+    )
 
     def get_queryset(self, request):
         return (
@@ -106,6 +138,11 @@ class BrandAdmin(ModelAdmin):
         return image_preview(obj.logo_url, height=40)
 
     logo.short_description = "Logo"
+
+    def logo_preview(self, obj):
+        return image_preview(obj.logo_url, height=80)
+
+    logo_preview.short_description = "Logo preview"
 
 
 @admin.register(Badge)
