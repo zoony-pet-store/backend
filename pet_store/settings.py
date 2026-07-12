@@ -13,6 +13,8 @@ SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
 
 DEBUG = os.getenv("DEBUG", "False") == "True"
 
+RENDER_EXTERNAL_HOSTNAME = os.getenv("RENDER_EXTERNAL_HOSTNAME")
+
 ALLOWED_HOSTS = []
 
 if os.getenv("ALLOWED_HOSTS"):
@@ -28,6 +30,9 @@ ALLOWED_HOSTS.extend(
         ".elasticbeanstalk.com",
     ]
 )
+
+if RENDER_EXTERNAL_HOSTNAME:
+    ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
 
 if DEBUG:
     ALLOWED_HOSTS.extend(
@@ -67,6 +72,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "axes.middleware.AxesMiddleware",
     "corsheaders.middleware.CorsMiddleware",
