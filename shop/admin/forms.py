@@ -2,7 +2,6 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from django import forms
 from django_jsonform.widgets import JSONFormWidget
-from django.utils.html import format_html
 
 from ..models import (
     Brand,
@@ -22,40 +21,28 @@ from .helpers import (
     get_unit_choices_for_attribute,
     upload_image_to_cloudinary,
 )
-from .widgets import AttributeSelectWidget, AttributeValueSelectWidget
+from .widgets import (
+    AttributeSelectWidget,
+    AttributeValueSelectWidget,
+    MediaAssetSelectWidget,
+)
 
 
-class MediaAssetPreviewChoiceField(forms.ModelChoiceField):
-    def label_from_instance(self, obj):
-        return format_html(
-            (
-                '<span style="display:flex;align-items:center;gap:12px;">'
-                '<img src="{}" alt="{}" '
-                'style="width:72px;height:72px;object-fit:cover;'
-                'border-radius:8px;border:1px solid #ddd;" />'
-                "<span>"
-                "<strong>{}</strong><br />"
-                "<small>{}</small>"
-                "</span>"
-                "</span>"
-            ),
-            obj.image_url,
-            obj.alt_text or obj.title,
-            obj.title or "Untitled image",
-            obj.source,
-        )
+class MediaAssetChoiceField(forms.ModelChoiceField):
+    def label_from_instance(self, obj: MediaAsset) -> str:
+        return obj.title or "Untitled image"
 
 
 class ImageUrlAdminFormMixin(forms.ModelForm):
     image_url_field_name = ""
     image_alt_text_source_field = "name"
 
-    image_asset = MediaAssetPreviewChoiceField(
+    image_asset = MediaAssetChoiceField(
         queryset=MediaAsset.objects.none(),
         required=False,
         label="Choose from media library",
         help_text="Choose an existing image from media library.",
-        widget=forms.RadioSelect,
+        widget=MediaAssetSelectWidget(),
     )
     upload_file = forms.ImageField(
         required=False,
