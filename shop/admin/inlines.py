@@ -102,7 +102,6 @@ class ProductVariantImagesInline(TabularInline):
         "preview",
     )
     readonly_fields = ("preview",)
-    autocomplete_fields = ("asset",)
     ordering = ("display_order", "id")
     show_change_link = True
     verbose_name = "Variant image"
@@ -214,7 +213,6 @@ class ProductImagesInline(TabularInline):
         "preview",
     )
     readonly_fields = ("preview",)
-    autocomplete_fields = ("asset",)
     ordering = ("display_order", "id")
     show_change_link = True
     verbose_name = "Base product image"
@@ -251,7 +249,7 @@ class ProductVariantImagesOnProductInline(TabularInline):
         "preview",
     )
     readonly_fields = ("preview",)
-    autocomplete_fields = ("variant", "asset")
+    autocomplete_fields = ("variant",)
     ordering = ("variant__sku", "display_order", "id")
     show_change_link = True
     verbose_name = "Variant image"

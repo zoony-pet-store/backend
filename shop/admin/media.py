@@ -61,7 +61,10 @@ class ProductImageAdmin(ModelAdmin):
     )
     list_select_related = ("product", "variant", "asset")
     list_filter = ("is_main", "asset__source")
-    autocomplete_fields = ("product", "variant", "asset")
+    autocomplete_fields = (
+        "product",
+        "variant",
+    )
     search_fields = (
         "product__name",
         "variant__sku",

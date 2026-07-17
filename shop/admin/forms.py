@@ -484,6 +484,14 @@ class ProductImageAdminForm(forms.ModelForm):
         ),
     )
 
+    asset = MediaAssetChoiceField(
+        queryset=MediaAsset.objects.none(),
+        required=False,
+        label="Select existing image",
+        help_text="Search and choose an existing image from media library.",
+        widget=MediaAssetSelectWidget(),
+    )
+
     class Meta:
         model = ProductImage
         fields = "__all__"
@@ -501,11 +509,12 @@ class ProductImageAdminForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        if "asset" in self.fields:
-            self.fields["asset"].queryset = MediaAsset.objects.filter(
-                is_active=True
-            ).order_by("-created_at", "title")
-            self.fields["asset"].label = "Select existing image"
+        asset_field = self.fields.get("asset")
+
+        if isinstance(asset_field, forms.ModelChoiceField):
+            asset_field.queryset = MediaAsset.objects.filter(is_active=True).order_by(
+                "-created_at", "title"
+            )
 
         if "image_url" in self.fields:
             self.fields["image_url"].required = False
