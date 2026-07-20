@@ -3,45 +3,69 @@ from django.forms.models import BaseInlineFormSet
 
 from ..models import ProductVariant
 from .helpers import unset_other_main_images
+from ..validators.product_variants import (
+    validate_unique_variant_attribute_combination,
+    build_variant_attribute_signature_item,
+)
 
 
 class ProductVariantAttributeInlineFormSet(BaseInlineFormSet):
     def clean(self):
         super().clean()
 
-        seen_attributes = {}
-        has_duplicate_errors = False
+        if any(self.errors):
+            return
+
+        seen_attribute_ids = set()
+        signature_items = []
+        has_duplicate_attributes = False
 
         for form in self.forms:
-            if not hasattr(form, "cleaned_data"):
+            if self.can_delete and self._should_delete_form(form):
                 continue
 
             cleaned_data = form.cleaned_data
-
-            if cleaned_data.get("DELETE"):
-                continue
-
             attribute = cleaned_data.get("attribute")
 
+            # Empty extra inline form.
             if not attribute:
                 continue
 
-            if attribute.id in seen_attributes:
+            if attribute.pk in seen_attribute_ids:
                 form.add_error(
                     "attribute",
                     (
                         f'Attribute "{attribute.name}" is selected more than once. '
-                        f"Each variant can have only one value per attribute. "
-                        f"Change the existing row or create another variant."
+                        "Each variant can have only one value per attribute. "
+                        "Change the existing row or create another variant."
                     ),
                 )
-                has_duplicate_errors = True
+                has_duplicate_attributes = True
                 continue
 
-            seen_attributes[attribute.id] = attribute
+            seen_attribute_ids.add(attribute.pk)
 
-        if has_duplicate_errors:
+            value = cleaned_data.get("value")
+
+            signature_item = build_variant_attribute_signature_item(
+                attribute=attribute,
+                value_id=value.pk if value is not None else None,
+                value_numeric=cleaned_data.get("value_numeric"),
+                unit=cleaned_data.get("unit") or "",
+            )
+
+            if signature_item is not None:
+                signature_items.append(signature_item)
+
+        if has_duplicate_attributes:
             raise forms.ValidationError("Please correct duplicate attributes below.")
+
+        current_signature = frozenset(signature_items)
+
+        validate_unique_variant_attribute_combination(
+            variant=self.instance,
+            current_signature=current_signature,
+        )
 
 
 class ProductVariantSummaryInlineFormSet(BaseInlineFormSet):
