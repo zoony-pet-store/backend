@@ -1,4 +1,9 @@
-from .auth import GoogleAuthSerializer, LoginSerializer, UserRegisterSerializer
+from .auth import (
+    GoogleAuthSerializer,
+    LoginSerializer,
+    UserRegisterSerializer,
+    CustomerSerializer,
+)
 from .badge import BadgeSerializer
 from .catalog import (
     AnimalTypeCreateSerializer,
@@ -32,6 +37,7 @@ from .product_review import (
 from .product_variant import ProductVariantCardSerializer, ProductVariantSerializer
 
 __all__ = [
+    "CustomerSerializer",
     "AnimalTypeCreateSerializer",
     "AnimalTypeSerializer",
     "AnimalTypeWithCategoriesSerializer",

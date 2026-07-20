@@ -1,16 +1,21 @@
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
 from rest_framework import status
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView
 
-from ..serializers import GoogleAuthSerializer, LoginSerializer, UserRegisterSerializer
+from ..serializers import (
+    CustomerSerializer,
+    GoogleAuthSerializer,
+    LoginSerializer,
+    UserRegisterSerializer,
+)
 
 
-def get_token_for_user(user):
+def create_tokens_for_user(user):
     refresh = RefreshToken.for_user(user)
 
     return {
@@ -23,19 +28,43 @@ class RegisterView(APIView):
     permission_classes = [AllowAny]
 
     @swagger_auto_schema(
-        operation_description="Registration new user",
+        operation_description="Register a new user",
         request_body=UserRegisterSerializer,
-        responses={201: openapi.Response("User registered successfully")},
+        responses={
+            201: openapi.Response(
+                description="User registered successfully",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        "message": openapi.Schema(type=openapi.TYPE_STRING),
+                        "user": openapi.Schema(
+                            type=openapi.TYPE_OBJECT,
+                        ),
+                        "tokens": openapi.Schema(
+                            type=openapi.TYPE_OBJECT,
+                            properties={
+                                "refresh": openapi.Schema(type=openapi.TYPE_STRING),
+                                "access": openapi.Schema(type=openapi.TYPE_STRING),
+                            },
+                        ),
+                    },
+                ),
+            ),
+        },
     )
     def post(self, request):
         serializer = UserRegisterSerializer(data=request.data)
 
         if serializer.is_valid():
             user = serializer.save()
-            tokens = get_token_for_user(user)
+            tokens = create_tokens_for_user(user)
 
             return Response(
-                {"message": "User registered successfully", "tokens": tokens},
+                {
+                    "message": "User registered successfully",
+                    "user": CustomerSerializer(user).data,
+                    "tokens": tokens,
+                },
                 status=status.HTTP_201_CREATED,
             )
 
@@ -51,13 +80,23 @@ class LoginView(APIView):
         responses={200: openapi.Response("Login successfully")},
     )
     def post(self, request):
-        serializer = LoginSerializer(data=request.data, context={"request": request})
+        serializer = LoginSerializer(
+            data=request.data,
+            context={"request": request},
+        )
 
         if serializer.is_valid():
             user = serializer.validated_data["user"]
-            tokens = get_token_for_user(user)
+            tokens = create_tokens_for_user(user)
 
-            return Response({"message": "Login successfully", "tokens": tokens})
+            return Response(
+                {
+                    "message": "Login successfully",
+                    "user": CustomerSerializer(user).data,
+                    "tokens": tokens,
+                },
+                status=status.HTTP_200_OK,
+            )
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -75,18 +114,38 @@ class GoogleAuthView(APIView):
 
         if serializer.is_valid():
             user = serializer.validated_data["user"]
-            tokens = get_token_for_user(user)
+            tokens = create_tokens_for_user(user)
 
             return Response(
-                {"message": "Google authentication successfully", "tokens": tokens}
+                {
+                    "message": "Google authentication successfully",
+                    "user": CustomerSerializer(user).data,
+                    "tokens": tokens,
+                },
+                status=status.HTTP_200_OK,
             )
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+class CurrentUserView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_description="Get current authenticated user",
+        responses={
+            200: CustomerSerializer,
+            401: openapi.Response("Authentication credentials were not provided"),
+        },
+    )
+    def get(self, request):
+        serializer = CustomerSerializer(request.user)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
 class CustomTokenRefreshView(TokenRefreshView):
     @swagger_auto_schema(
-        operation_description="Updating the access token using a refresh token",
+        operation_description="Update the access token using a refresh token",
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
             properties={

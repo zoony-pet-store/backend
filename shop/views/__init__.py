@@ -3,7 +3,8 @@ from .auth import (
     GoogleAuthView,
     LoginView,
     RegisterView,
-    get_token_for_user,
+    create_tokens_for_user,
+    CurrentUserView,
 )
 from .catalog import (
     AnimalTypeCategoriesView,
@@ -31,6 +32,7 @@ from .product import (
 from .product_review import ProductReviewCreateView, update_product_review_stats
 
 __all__ = [
+    "CurrentUserView",
     "AnimalTypeCategoriesView",
     "BrandDetailView",
     "BrandListView",
@@ -54,7 +56,7 @@ __all__ = [
     "get_product_base_queryset",
     "get_product_detail_queryset",
     "get_request_query_params",
-    "get_token_for_user",
+    "create_tokens_for_user",
     "health_check",
     "index",
     "update_product_review_stats",

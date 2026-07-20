@@ -16,6 +16,21 @@ from ..models import Customer
 logger = logging.getLogger("shop.serializers")
 
 
+class CustomerSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Customer
+        fields = (
+            "id",
+            "email",
+            "first_name",
+            "last_name",
+            "phone_number",
+            "address",
+            "email_verified",
+        )
+        read_only_fields = fields
+
+
 class UserRegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(
         write_only=True,
