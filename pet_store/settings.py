@@ -9,6 +9,15 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 load_dotenv(dotenv_path=BASE_DIR / ".env")
 
+
+def get_env_list(name: str, default: str = "") -> list[str]:
+    return [
+        value.strip().rstrip("/")
+        for value in os.getenv(name, default).split(",")
+        if value.strip()
+    ]
+
+
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
 
 DEBUG = os.getenv("DEBUG", "False") == "True"
@@ -42,10 +51,10 @@ if DEBUG:
         ]
     )
 
-CSRF_TRUSTED_ORIGINS = [
-    "http://zoony.eu-central-1.elasticbeanstalk.com",
-    "https://zoony.eu-central-1.elasticbeanstalk.com",
-]
+CSRF_TRUSTED_ORIGINS = get_env_list(
+    "CSRF_TRUSTED_ORIGINS",
+    "http://localhost:5173",
+)
 
 INSTALLED_APPS = [
     "unfold.apps.BasicAppConfig",
@@ -72,10 +81,10 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "corsheaders.middleware.CorsMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "axes.middleware.AxesMiddleware",
-    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
@@ -229,8 +238,9 @@ SIMPLE_JWT = {
 # CORS
 # =====================
 
-CORS_ALLOWED_ORIGINS = os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000").split(
-    ","
+CORS_ALLOWED_ORIGINS = get_env_list(
+    "CORS_ALLOWED_ORIGINS",
+    "http://localhost:5173",
 )
 
 # =====================
