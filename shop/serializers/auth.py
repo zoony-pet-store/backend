@@ -31,6 +31,19 @@ class CustomerSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+class CustomerUpdateSerializer(serializers.ModelSerializer):
+    """Updates editable customer profile fields."""
+
+    class Meta:
+        model = Customer
+        fields = (
+            "first_name",
+            "last_name",
+            "phone_number",
+            "address",
+        )
+
+
 class UserRegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(
         write_only=True,

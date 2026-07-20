@@ -3,6 +3,7 @@ from .auth import (
     LoginSerializer,
     UserRegisterSerializer,
     CustomerSerializer,
+    CustomerUpdateSerializer,
 )
 from .badge import BadgeSerializer
 from .catalog import (
@@ -38,6 +39,7 @@ from .product_variant import ProductVariantCardSerializer, ProductVariantSeriali
 
 __all__ = [
     "CustomerSerializer",
+    "CustomerUpdateSerializer",
     "AnimalTypeCreateSerializer",
     "AnimalTypeSerializer",
     "AnimalTypeWithCategoriesSerializer",

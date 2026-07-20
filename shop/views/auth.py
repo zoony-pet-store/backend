@@ -9,6 +9,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 
 from ..serializers import (
     CustomerSerializer,
+    CustomerUpdateSerializer,
     GoogleAuthSerializer,
     LoginSerializer,
     UserRegisterSerializer,
@@ -141,6 +142,29 @@ class CurrentUserView(APIView):
     def get(self, request):
         serializer = CustomerSerializer(request.user)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @swagger_auto_schema(
+        operation_description="Partially update current user profile",
+        request_body=CustomerUpdateSerializer,
+        responses={
+            200: CustomerSerializer,
+            400: openapi.Response("Invalid profile data"),
+            401: openapi.Response("Authentication credentials were not provided"),
+        },
+    )
+    def patch(self, request):
+        serializer = CustomerUpdateSerializer(
+            request.user,
+            data=request.data,
+            partial=True,
+        )
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+
+        return Response(
+            CustomerSerializer(user).data,
+            status=status.HTTP_200_OK,
+        )
 
 
 class CustomTokenRefreshView(TokenRefreshView):
