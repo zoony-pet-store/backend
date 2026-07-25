@@ -48,7 +48,9 @@ class ProductVariantSerializer(serializers.ModelSerializer):
 
     def get_attributes_raw(self, obj):
         return {
-            translated_field(item.attribute, "name"): serialize_variant_attribute_raw(item)
+            translated_field(item.attribute, "name"): serialize_variant_attribute_raw(
+                item
+            )
             for item in obj.variant_attributes.all()
         }
 
@@ -109,7 +111,9 @@ class ProductVariantCardSerializer(serializers.ModelSerializer):
 
     def get_attributes_raw(self, obj):
         return {
-            translated_field(item.attribute, "name"): serialize_variant_attribute_raw(item)
+            translated_field(item.attribute, "name"): serialize_variant_attribute_raw(
+                item
+            )
             for item in obj.variant_attributes.all()
         }
 
