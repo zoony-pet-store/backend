@@ -57,6 +57,7 @@ class MediaAsset(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        db_table = "media_assets"
         ordering = ["-created_at", "title"]
         indexes = [
             models.Index(fields=["source"]),
@@ -141,6 +142,7 @@ class ProductImage(models.Model):
     cloudinary_public_id = models.CharField(max_length=255, blank=True, default="")
 
     class Meta:
+        db_table = "product_images"
         ordering = ["display_order", "id"]
         indexes = [
             models.Index(fields=["product", "variant"]),

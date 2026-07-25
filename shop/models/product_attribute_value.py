@@ -26,6 +26,7 @@ class ProductAttributeValue(models.Model):
     display_order = models.IntegerField(default=0)
 
     class Meta:
+        db_table = "product_attribute_values"
         ordering = ["attribute__display_order", "display_order", "value"]
         constraints = [
             models.UniqueConstraint(

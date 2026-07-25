@@ -15,6 +15,10 @@ from .inlines import (
     ProductVariantImagesOnProductInline,
     ProductVariantsInline,
 )
+from .translation_inlines import (
+    ProductTranslationInline,
+    ProductVariantTranslationInline,
+)
 
 
 @admin.register(Product)
@@ -62,6 +66,7 @@ class ProductAdmin(ModelAdmin):
     save_on_top = True
     ordering = ("-created_at",)
     inlines = (
+        ProductTranslationInline,
         ProductVariantsInline,
         ProductImagesInline,
         ProductVariantImagesOnProductInline,
@@ -244,6 +249,7 @@ class ProductVariantAdmin(ModelAdmin):
     )
     ordering = ("product__name", "-is_default", "price", "id")
     inlines = (
+        ProductVariantTranslationInline,
         ProductVariantAttributeInline,
         ProductVariantImagesInline,
     )

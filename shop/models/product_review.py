@@ -37,6 +37,7 @@ class ProductReview(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        db_table = "product_reviews"
         ordering = ["-created_at"]
         indexes = [
             models.Index(fields=["product", "is_active"]),

@@ -67,10 +67,12 @@ class ProductAttribute(models.Model):
     categories = models.ManyToManyField(
         Category,
         blank=True,
+        db_table="product_attribute_categories",
         related_name="attributes",
     )
 
     class Meta:
+        db_table = "product_attributes"
         ordering = ["display_order", "name"]
 
     @property

@@ -12,6 +12,9 @@ class Cart(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        db_table = "carts"
+
     @property
     def total_price(self):
         return sum(item.total_price for item in self.items.select_related("variant"))
@@ -47,6 +50,7 @@ class CartItem(models.Model):
     added_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        db_table = "cart_items"
         constraints = [
             models.UniqueConstraint(
                 fields=["cart", "variant"],

@@ -323,7 +323,12 @@ class Product(models.Model):
     )
 
     is_active = models.BooleanField(default=True)
-    badges = models.ManyToManyField(Badge, blank=True, related_name="products")
+    badges = models.ManyToManyField(
+        Badge,
+        blank=True,
+        db_table="product_badges",
+        related_name="products",
+    )
 
     rating = models.DecimalField(max_digits=3, decimal_places=2, default=0.0)
     review_count = models.IntegerField(default=0)
@@ -350,6 +355,7 @@ class Product(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        db_table = "products"
         ordering = ["-created_at"]
         constraints = [
             models.UniqueConstraint(
@@ -458,6 +464,7 @@ class ProductCharacteristic(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        db_table = "product_characteristics"
         ordering = ["created_at"]
         verbose_name = "Product characteristic"
         verbose_name_plural = "Product characteristics"
@@ -486,6 +493,7 @@ class ProductTypicalAnalysisItem(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        db_table = "product_typical_analysis_items"
         ordering = ["created_at"]
         verbose_name = "Typical analysis item"
         verbose_name_plural = "Typical analysis items"
@@ -515,6 +523,7 @@ class ProductFeedingGuidelineRow(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        db_table = "product_feeding_guideline_rows"
         ordering = ["created_at"]
         verbose_name = "Feeding guideline row"
         verbose_name_plural = "Feeding guideline rows"

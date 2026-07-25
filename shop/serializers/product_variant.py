@@ -1,12 +1,14 @@
 from rest_framework import serializers
 
-from ..models import ProductVariant
+from ..models import ProductAttribute, ProductVariant, translated_field
 from .badge import BadgeSerializer
 from .product_attribute import serialize_variant_attribute_raw
 from .product_image import ProductImageSerializer
 
 
 class ProductVariantSerializer(serializers.ModelSerializer):
+    description = serializers.SerializerMethodField()
+    short_description = serializers.SerializerMethodField()
     attributes = serializers.SerializerMethodField()
     attributes_raw = serializers.SerializerMethodField()
     images = serializers.SerializerMethodField()
@@ -38,15 +40,32 @@ class ProductVariantSerializer(serializers.ModelSerializer):
 
     def get_attributes(self, obj):
         return {
-            item.attribute.name: item.display_value
+            translated_field(item.attribute, "name"): self._get_attribute_display_value(
+                item
+            )
             for item in obj.variant_attributes.all()
         }
 
     def get_attributes_raw(self, obj):
         return {
-            item.attribute.name: serialize_variant_attribute_raw(item)
+            translated_field(item.attribute, "name"): serialize_variant_attribute_raw(item)
             for item in obj.variant_attributes.all()
         }
+
+    def get_description(self, obj):
+        return translated_field(obj, "description")
+
+    def get_short_description(self, obj):
+        return translated_field(obj, "short_description")
+
+    def _get_attribute_display_value(self, item):
+        if item.attribute.type == ProductAttribute.AttributeType.NUMERIC:
+            return item.display_value
+
+        if item.value_id:
+            return translated_field(item.value, "value")
+
+        return ""
 
     def get_images(self, obj):
         images = list(obj.images.all())
@@ -82,15 +101,26 @@ class ProductVariantCardSerializer(serializers.ModelSerializer):
 
     def get_attributes(self, obj):
         return {
-            item.attribute.name: item.display_value
+            translated_field(item.attribute, "name"): self._get_attribute_display_value(
+                item
+            )
             for item in obj.variant_attributes.all()
         }
 
     def get_attributes_raw(self, obj):
         return {
-            item.attribute.name: serialize_variant_attribute_raw(item)
+            translated_field(item.attribute, "name"): serialize_variant_attribute_raw(item)
             for item in obj.variant_attributes.all()
         }
+
+    def _get_attribute_display_value(self, item):
+        if item.attribute.type == ProductAttribute.AttributeType.NUMERIC:
+            return item.display_value
+
+        if item.value_id:
+            return translated_field(item.value, "value")
+
+        return ""
 
     def get_image_url(self, obj):
         images = list(obj.images.all())

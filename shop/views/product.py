@@ -21,10 +21,14 @@ def get_active_variant_queryset():
     return (
         ProductVariant.objects.filter(is_active=True)
         .prefetch_related(
+            "translations",
             "badges",
+            "badges__translations",
             "images",
             "variant_attributes__attribute",
+            "variant_attributes__attribute__translations",
             "variant_attributes__value",
+            "variant_attributes__value__translations",
         )
         .order_by("-is_default", "price", "id")
     )
@@ -35,7 +39,11 @@ def get_product_base_queryset():
         Product.objects.filter(is_active=True)
         .select_related("brand", "category", "category__animal_type")
         .prefetch_related(
+            "translations",
             "badges",
+            "badges__translations",
+            "category__translations",
+            "category__animal_type__translations",
             Prefetch(
                 "images",
                 queryset=ProductImage.objects.order_by("display_order", "id"),
@@ -110,8 +118,12 @@ class ProductListView(generics.ListAPIView):
                 Q(name__icontains=search)
                 | Q(description__icontains=search)
                 | Q(short_description__icontains=search)
+                | Q(translations__name__icontains=search)
+                | Q(translations__description__icontains=search)
+                | Q(translations__short_description__icontains=search)
                 | Q(brand__name__icontains=search)
                 | Q(category__name__icontains=search)
+                | Q(category__translations__name__icontains=search)
             )
 
         in_stock = query_params.get("in_stock")
@@ -183,8 +195,12 @@ class ProductSearchView(generics.ListAPIView):
                 Q(name__icontains=query)
                 | Q(description__icontains=query)
                 | Q(short_description__icontains=query)
+                | Q(translations__name__icontains=query)
+                | Q(translations__description__icontains=query)
+                | Q(translations__short_description__icontains=query)
                 | Q(brand__name__icontains=query)
                 | Q(category__name__icontains=query)
+                | Q(category__translations__name__icontains=query)
             )
             .distinct()
         )

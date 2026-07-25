@@ -1,0 +1,84 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: zoony\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-07-22 00:00+0000\n"
+"PO-Revision-Date: 2026-07-22 00:00+0000\n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"Language: uk\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "Ukrainian"
+msgstr "Українська"
+
+msgid "English"
+msgstr "Англійська"
+
+msgid "User registered successfully"
+msgstr "Користувача успішно зареєстровано"
+
+msgid "Login successfully"
+msgstr "Вхід виконано успішно"
+
+msgid "Google authentication successfully"
+msgstr "Автентифікацію через Google виконано успішно"
+
+msgid "No image provided"
+msgstr "Зображення не передано"
+
+msgid "Image too large (max 5MB)"
+msgstr "Зображення завелике (максимум 5 МБ)"
+
+msgid "product_id is required"
+msgstr "product_id є обов'язковим"
+
+msgid "display_order must be an integer"
+msgstr "display_order має бути цілим числом"
+
+msgid "Comment is required."
+msgstr "Коментар є обов'язковим."
+
+msgid "Service is healthy"
+msgstr "Сервіс працює"
+
+msgid "Category path is required."
+msgstr "Шлях категорії є обов'язковим."
+
+msgid "Category not found."
+msgstr "Категорію не знайдено."
+
+msgid "Enter a valid email address."
+msgstr "Введіть коректну email-адресу."
+
+msgid "A user with that email already exists."
+msgstr "Користувач із таким email уже існує."
+
+msgid "Password fields didn't match."
+msgstr "Паролі не збігаються."
+
+msgid "Invalid email or password."
+msgstr "Невірний email або пароль."
+
+msgid "User account disabled."
+msgstr "Обліковий запис користувача вимкнено."
+
+msgid "Email not verified."
+msgstr "Email не підтверджено."
+
+msgid "Invalid Google token."
+msgstr "Невірний Google token."
+
+msgid "It is not a Google account."
+msgstr "Це не Google-акаунт."
+
+msgid "Token audience mismatch."
+msgstr "Аудиторія token не збігається."
+
+msgid "No email in token."
+msgstr "У token немає email."
+
+msgid "Google account email not verified."
+msgstr "Email Google-акаунта не підтверджено."
