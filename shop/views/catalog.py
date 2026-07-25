@@ -119,7 +119,7 @@ class CategoryDetailView(APIView):
                     queryset=Category.objects.filter(is_active=True)
                     .order_by("sort_order", "name")
                     .prefetch_related("translations"),
-                )
+                ),
             ),
             pk=category.pk,
         )

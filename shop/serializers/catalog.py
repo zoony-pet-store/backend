@@ -202,9 +202,9 @@ class AnimalTypeWithCategoriesSerializer(serializers.ModelSerializer):
                         queryset=Category.objects.filter(
                             is_active=True
                         ).prefetch_related("translations"),
-                    )
+                    ),
                 ),
-            )
+            ),
         )
 
         max_depth = self.context.get("max_depth", 2)
