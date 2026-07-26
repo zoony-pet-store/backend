@@ -13,6 +13,7 @@ from ..models import (
     ProductAttributeValue,
     ProductImage,
     ProductReview,
+    ProductReviewImage,
     ProductVariant,
     ProductVariantAttribute,
 )
@@ -62,7 +63,11 @@ from .attributes import (
 )
 from .media import MediaAssetAdmin, ProductImageAdmin
 from .product import ProductAdmin, ProductVariantAdmin
-from .review import ProductReviewAdmin
+from .review import (
+    ProductReviewAdmin,
+    ProductReviewImageAdmin,
+    ProductReviewImageInline,
+)
 from .cart import CartAdmin, CartItemAdmin
 
 __all__ = [
@@ -105,6 +110,9 @@ __all__ = [
     "ProductImageInlineFormSet",
     "ProductImagesInline",
     "ProductReview",
+    "ProductReviewImage",
+    "ProductReviewImageAdmin",
+    "ProductReviewImageInline",
     "ProductReviewAdmin",
     "ProductVariant",
     "ProductVariantAdmin",
