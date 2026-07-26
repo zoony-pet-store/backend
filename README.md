@@ -136,20 +136,21 @@ http://localhost:8000
 The local frontend is expected to run at:
 
 ```text
-http://localhost:5173
+http://localhost:3000
 ```
 
-Frontend environment variable:
+Frontend environment variables:
 
 ```dotenv
-VITE_API_URL=http://localhost:8000
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+API_BASE_URL=http://localhost:8000
 ```
 
 The backend `.env` file should contain:
 
 ```dotenv
-CORS_ALLOWED_ORIGINS=http://localhost:5173
-CSRF_TRUSTED_ORIGINS=http://localhost:5173
+CORS_ALLOWED_ORIGINS=http://localhost:3000
+CSRF_TRUSTED_ORIGINS=http://localhost:3000
 ```
 
 Use the exact API routes defined by the backend. The project has

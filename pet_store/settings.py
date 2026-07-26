@@ -53,7 +53,7 @@ if DEBUG:
 
 CSRF_TRUSTED_ORIGINS = get_env_list(
     "CSRF_TRUSTED_ORIGINS",
-    "http://localhost:5173",
+    "http://localhost:3000",
 )
 
 INSTALLED_APPS = [
@@ -240,7 +240,7 @@ SIMPLE_JWT = {
 
 CORS_ALLOWED_ORIGINS = get_env_list(
     "CORS_ALLOWED_ORIGINS",
-    "http://localhost:5173",
+    "http://localhost:3000",
 )
 
 # =====================
