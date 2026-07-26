@@ -104,9 +104,7 @@ class ProductReviewCreateSerializer(serializers.ModelSerializer):
         value = value.strip()
 
         if not value:
-            raise serializers.ValidationError(
-                {"comment": _("Comment is required.")}
-            )
+            raise serializers.ValidationError({"comment": _("Comment is required.")})
 
         return value
 

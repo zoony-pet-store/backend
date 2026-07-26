@@ -121,7 +121,7 @@ def validate_unique_variant_attribute_combination(
 
         raise ValidationError(
             _(
-                'A variant with the same attribute combination already exists: '
+                "A variant with the same attribute combination already exists: "
                 '"%(variant_identifier)s". '
                 "At least one attribute value must be different."
             )

@@ -11,7 +11,6 @@ from ..models import (
 )
 
 
-
 class AnimalTypeTranslationInline(TabularInline):
     model = AnimalTypeTranslation
     extra = 0
