@@ -35,6 +35,7 @@ class Category(models.Model):
     class Meta:
         db_table = "categories"
         ordering = ["sort_order", "name"]
+        verbose_name_plural = "Categories"
         constraints = [
             models.UniqueConstraint(
                 fields=["slug", "animal_type", "parent"],

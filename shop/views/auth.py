@@ -1,5 +1,6 @@
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
+from django.utils.translation import gettext as _
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -62,7 +63,7 @@ class RegisterView(APIView):
 
             return Response(
                 {
-                    "message": "User registered successfully",
+                    "message": _("User registered successfully"),
                     "user": CustomerSerializer(user).data,
                     "tokens": tokens,
                 },
@@ -92,7 +93,7 @@ class LoginView(APIView):
 
             return Response(
                 {
-                    "message": "Login successfully",
+                    "message": _("Login successfully"),
                     "user": CustomerSerializer(user).data,
                     "tokens": tokens,
                 },
@@ -119,7 +120,7 @@ class GoogleAuthView(APIView):
 
             return Response(
                 {
-                    "message": "Google authentication successfully",
+                    "message": _("Google authentication successfully"),
                     "user": CustomerSerializer(user).data,
                     "tokens": tokens,
                 },

@@ -1,14 +1,19 @@
 from django.db.models import Prefetch
 from rest_framework import serializers
 
-from ..models import AnimalType, Brand, Category
+from ..models import AnimalType, Brand, Category, translated_field
 
 
 class AnimalTypeSerializer(serializers.ModelSerializer):
+    name = serializers.SerializerMethodField()
+
     class Meta:
         model = AnimalType
         fields = ["id", "name", "slug", "icon", "is_active"]
         read_only_fields = ["id"]
+
+    def get_name(self, obj):
+        return translated_field(obj, "name")
 
 
 class AnimalTypeCreateSerializer(serializers.ModelSerializer):
@@ -18,6 +23,8 @@ class AnimalTypeCreateSerializer(serializers.ModelSerializer):
 
 
 class CategoryDetailSerializer(serializers.ModelSerializer):
+    name = serializers.SerializerMethodField()
+    description = serializers.SerializerMethodField()
     animal_type = AnimalTypeSerializer(read_only=True)
     parent = serializers.SerializerMethodField()
     breadcrumbs = serializers.SerializerMethodField()
@@ -48,9 +55,15 @@ class CategoryDetailSerializer(serializers.ModelSerializer):
 
         return {
             "id": str(obj.parent.id),
-            "name": obj.parent.name,
+            "name": translated_field(obj.parent, "name"),
             "slug": obj.parent.slug,
         }
+
+    def get_name(self, obj):
+        return translated_field(obj, "name")
+
+    def get_description(self, obj):
+        return translated_field(obj, "description")
 
     def get_breadcrumbs(self, obj):
         breadcrumbs = []
@@ -60,7 +73,7 @@ class CategoryDetailSerializer(serializers.ModelSerializer):
             breadcrumbs.append(
                 {
                     "id": str(current.id),
-                    "name": current.name,
+                    "name": translated_field(current, "name"),
                     "slug": current.slug,
                 }
             )
@@ -103,9 +116,14 @@ class CategoryCreateUpdateSerializer(serializers.ModelSerializer):
 
 
 class CategorySerializer(serializers.ModelSerializer):
+    name = serializers.SerializerMethodField()
+
     class Meta:
         model = Category
         fields = ["name", "slug", "image_url"]
+
+    def get_name(self, obj):
+        return translated_field(obj, "name")
 
 
 class CategoryTreeSerializer(CategorySerializer):
@@ -158,6 +176,7 @@ class CategoryWithChildrenSerializer(CategorySerializer):
 
 
 class AnimalTypeWithCategoriesSerializer(serializers.ModelSerializer):
+    name = serializers.SerializerMethodField()
     categories = serializers.SerializerMethodField()
     icon = serializers.CharField(read_only=True)
 
@@ -165,20 +184,27 @@ class AnimalTypeWithCategoriesSerializer(serializers.ModelSerializer):
         model = AnimalType
         fields = ["name", "slug", "icon", "image_url", "categories"]
 
+    def get_name(self, obj):
+        return translated_field(obj, "name")
+
     def get_categories(self, obj):
         root_categories = obj.categories.filter(
             parent__isnull=True,
             is_active=True,
         ).prefetch_related(
+            "translations",
             Prefetch(
                 "children",
                 queryset=Category.objects.filter(is_active=True).prefetch_related(
+                    "translations",
                     Prefetch(
                         "children",
-                        queryset=Category.objects.filter(is_active=True),
-                    )
+                        queryset=Category.objects.filter(
+                            is_active=True
+                        ).prefetch_related("translations"),
+                    ),
                 ),
-            )
+            ),
         )
 
         max_depth = self.context.get("max_depth", 2)

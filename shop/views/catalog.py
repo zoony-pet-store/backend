@@ -1,6 +1,7 @@
 from django.db.models import Prefetch
 from django.http import Http404
 from django.shortcuts import get_object_or_404
+from django.utils.translation import gettext as _
 from rest_framework import generics, permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -23,7 +24,7 @@ def get_category_by_path(animal_type_slug: str, category_path: str) -> Category:
     path_parts = [part for part in category_path.strip("/").split("/") if part]
 
     if not path_parts:
-        raise Http404("Category path is required.")
+        raise Http404(_("Category path is required."))
 
     animal_type = get_object_or_404(
         AnimalType,
@@ -45,7 +46,7 @@ def get_category_by_path(animal_type_slug: str, category_path: str) -> Category:
         parent = current_category
 
     if current_category is None:
-        raise Http404("Category not found.")
+        raise Http404(_("Category not found."))
 
     return current_category
 
@@ -65,7 +66,29 @@ class AnimalTypeCategoriesView(APIView):
 
     def get(self, request, animal_type_slug):
         animal_type = get_object_or_404(
-            AnimalType,
+            AnimalType.objects.prefetch_related(
+                "translations",
+                Prefetch(
+                    "categories",
+                    queryset=Category.objects.filter(is_active=True).prefetch_related(
+                        "translations",
+                        Prefetch(
+                            "children",
+                            queryset=Category.objects.filter(
+                                is_active=True
+                            ).prefetch_related(
+                                "translations",
+                                Prefetch(
+                                    "children",
+                                    queryset=Category.objects.filter(
+                                        is_active=True
+                                    ).prefetch_related("translations"),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
             slug=animal_type_slug,
             is_active=True,
         )
@@ -89,12 +112,15 @@ class CategoryDetailView(APIView):
 
         category = get_object_or_404(
             Category.objects.select_related("animal_type", "parent").prefetch_related(
+                "translations",
+                "animal_type__translations",
+                "parent__translations",
                 Prefetch(
                     "children",
-                    queryset=Category.objects.filter(is_active=True).order_by(
-                        "sort_order", "name"
-                    ),
-                )
+                    queryset=Category.objects.filter(is_active=True)
+                    .order_by("sort_order", "name")
+                    .prefetch_related("translations"),
+                ),
             ),
             pk=category.pk,
         )

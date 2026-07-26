@@ -1,5 +1,6 @@
 import cloudinary.uploader
 from django.shortcuts import get_object_or_404
+from django.utils.translation import gettext as _
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
 from rest_framework import permissions, status
@@ -86,7 +87,7 @@ class ProductImageUploadView(APIView):
     def post(self, request):
         if "image" not in request.FILES:
             return Response(
-                {"error": "No image provided"},
+                {"error": _("No image provided")},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -94,7 +95,7 @@ class ProductImageUploadView(APIView):
 
         if file.size > 5 * 1024 * 1024:
             return Response(
-                {"error": "Image too large (max 5MB)"},
+                {"error": _("Image too large (max 5MB)")},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -102,7 +103,7 @@ class ProductImageUploadView(APIView):
 
         if not product_id:
             return Response(
-                {"error": "product_id is required"},
+                {"error": _("product_id is required")},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -129,7 +130,7 @@ class ProductImageUploadView(APIView):
             display_order = int(display_order_raw)
         except (TypeError, ValueError):
             return Response(
-                {"error": "display_order must be an integer"},
+                {"error": _("display_order must be an integer")},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 

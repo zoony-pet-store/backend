@@ -6,6 +6,11 @@ from unfold.admin import ModelAdmin
 from ..models import AnimalType, Badge, Brand, Category
 from .forms import CategoryForm, BrandForm
 from .helpers import image_preview
+from .translation_inlines import (
+    AnimalTypeTranslationInline,
+    BadgeTranslationInline,
+    CategoryTranslationInline,
+)
 
 
 @admin.register(AnimalType)
@@ -14,6 +19,7 @@ class AnimalTypeAdmin(ModelAdmin):
     search_fields = ("name", "slug")
     list_filter = ("is_active",)
     ordering = ("name",)
+    inlines = (AnimalTypeTranslationInline,)
 
     def get_queryset(self, request):
         return (
@@ -59,6 +65,7 @@ class CategoryAdmin(ModelAdmin):
     search_fields = ("name", "slug", "parent__name", "animal_type__name")
     ordering = ("animal_type__name", "sort_order", "name")
     autocomplete_fields = ("parent",)
+    inlines = (CategoryTranslationInline,)
 
     def get_queryset(self, request):
         return (
@@ -151,6 +158,7 @@ class BadgeAdmin(ModelAdmin):
     list_filter = ("is_active",)
     search_fields = ("name", "label", "slug")
     ordering = ("label",)
+    inlines = (BadgeTranslationInline,)
 
     def color_preview(self, obj):
         return format_html(

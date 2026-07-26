@@ -1,4 +1,4 @@
-from ..models import ProductAttribute
+from ..models import ProductAttribute, translated_field
 
 
 def format_decimal_for_api(value):
@@ -29,9 +29,9 @@ def serialize_numeric_attribute_value(item):
 def serialize_select_attribute_value(item):
     return {
         "type": ProductAttribute.AttributeType.SELECT,
-        "display_value": item.display_value,
+        "display_value": translated_field(item.value, "value") if item.value_id else "",
         "value_id": str(item.value_id) if item.value_id else None,
-        "value": item.value.value if item.value_id else None,
+        "value": translated_field(item.value, "value") if item.value_id else None,
         "slug": item.value.slug if item.value_id else None,
     }
 
