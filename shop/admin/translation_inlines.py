@@ -1,6 +1,4 @@
-from django.contrib import admin
-from django import forms
-from django.conf import settings
+from unfold.admin import StackedInline, TabularInline
 
 from ..models import (
     AnimalTypeTranslation,
@@ -13,47 +11,37 @@ from ..models import (
 )
 
 
-class TranslationInlineForm(forms.ModelForm):
-    language = forms.ChoiceField(choices=settings.LANGUAGES)
 
-
-class AnimalTypeTranslationInline(admin.TabularInline):
+class AnimalTypeTranslationInline(TabularInline):
     model = AnimalTypeTranslation
-    form = TranslationInlineForm
     extra = 0
 
 
-class CategoryTranslationInline(admin.TabularInline):
+class CategoryTranslationInline(TabularInline):
     model = CategoryTranslation
-    form = TranslationInlineForm
     extra = 0
 
 
-class BadgeTranslationInline(admin.TabularInline):
+class BadgeTranslationInline(TabularInline):
     model = BadgeTranslation
-    form = TranslationInlineForm
     extra = 0
 
 
-class ProductTranslationInline(admin.StackedInline):
+class ProductTranslationInline(StackedInline):
     model = ProductTranslation
-    form = TranslationInlineForm
     extra = 0
 
 
-class ProductVariantTranslationInline(admin.StackedInline):
+class ProductVariantTranslationInline(StackedInline):
     model = ProductVariantTranslation
-    form = TranslationInlineForm
     extra = 0
 
 
-class ProductAttributeTranslationInline(admin.TabularInline):
+class ProductAttributeTranslationInline(TabularInline):
     model = ProductAttributeTranslation
-    form = TranslationInlineForm
     extra = 0
 
 
-class ProductAttributeValueTranslationInline(admin.TabularInline):
+class ProductAttributeValueTranslationInline(TabularInline):
     model = ProductAttributeValueTranslation
-    form = TranslationInlineForm
     extra = 0

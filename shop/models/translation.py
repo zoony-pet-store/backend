@@ -1,11 +1,16 @@
 from django.conf import settings
 from django.db import models
 from django.utils.translation import get_language
+from django_jsonform.models.fields import JSONField as JSONFormField
 
 from .animal_type import AnimalType
 from .badge import Badge
 from .category import Category
-from .product import Product
+from .product import (
+    Product,
+    validate_product_content_blocks,
+    PRODUCT_CONTENT_BLOCKS_SCHEMA,
+)
 from .product_attribute import ProductAttribute
 from .product_attribute_value import ProductAttributeValue
 from .product_variant import ProductVariant
@@ -58,10 +63,24 @@ def translated_field(obj, field_name, language=None, fallback_language=None):
 
 
 class BaseTranslation(models.Model):
-    language = models.CharField(max_length=10, db_index=True)
+    language = models.CharField(
+        max_length=10,
+        choices=settings.LANGUAGES,
+        db_index=True,
+    )
 
     class Meta:
         abstract = True
+
+    def clean(self):
+        super().clean()
+
+        if self.language:
+            self.language = normalize_language_code(self.language)
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
 
 
 class AnimalTypeTranslation(BaseTranslation):
@@ -139,7 +158,17 @@ class ProductTranslation(BaseTranslation):
     short_description = models.TextField(max_length=500, blank=True)
     meta_title = models.CharField(max_length=255, blank=True)
     meta_description = models.TextField(blank=True)
-    content_blocks = models.JSONField(default=list, blank=True)
+
+    content_blocks = JSONFormField(
+        schema=PRODUCT_CONTENT_BLOCKS_SCHEMA,
+        default=list,
+        blank=True,
+        verbose_name="Translated content blocks",
+        help_text=(
+            "Localized version of the product content blocks. "
+            "The block keys and structure should match the base product."
+        ),
+    )
 
     class Meta:
         db_table = "product_translations"
@@ -149,6 +178,10 @@ class ProductTranslation(BaseTranslation):
                 name="unique_product_translation_language",
             )
         ]
+
+    def clean(self):
+        super().clean()
+        validate_product_content_blocks(self.content_blocks)
 
     def __str__(self):
         return f"{self.product} [{self.language}]"

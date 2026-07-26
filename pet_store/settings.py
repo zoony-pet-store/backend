@@ -3,6 +3,7 @@ from datetime import timedelta
 import os
 import cloudinary
 import dj_database_url
+from django.utils.translation import gettext_lazy as _
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -172,9 +173,14 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = "en-us"
 LANGUAGES = [
-    ("en", "English"),
-    ("uk", "Ukrainian"),
+    ("en", _("English")),
+    ("uk", _("Ukrainian")),
 ]
+
+LOCALE_PATHS = [
+    BASE_DIR / "locale",
+]
+
 TIME_ZONE = "UTC"
 USE_I18N = True
 USE_TZ = True

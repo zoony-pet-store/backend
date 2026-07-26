@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from django.utils.translation import gettext_lazy as _
 
 from ..models import ProductReview
 
@@ -103,7 +104,9 @@ class ProductReviewCreateSerializer(serializers.ModelSerializer):
         value = value.strip()
 
         if not value:
-            raise serializers.ValidationError("Comment is required.")
+            raise serializers.ValidationError(
+                {"comment": _("Comment is required.")}
+            )
 
         return value
 

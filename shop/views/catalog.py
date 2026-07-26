@@ -1,6 +1,7 @@
 from django.db.models import Prefetch
 from django.http import Http404
 from django.shortcuts import get_object_or_404
+from django.utils.translation import gettext as _
 from rest_framework import generics, permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -23,7 +24,7 @@ def get_category_by_path(animal_type_slug: str, category_path: str) -> Category:
     path_parts = [part for part in category_path.strip("/").split("/") if part]
 
     if not path_parts:
-        raise Http404("Category path is required.")
+        raise Http404(_("Category path is required."))
 
     animal_type = get_object_or_404(
         AnimalType,
@@ -45,7 +46,7 @@ def get_category_by_path(animal_type_slug: str, category_path: str) -> Category:
         parent = current_category
 
     if current_category is None:
-        raise Http404("Category not found.")
+        raise Http404(_("Category not found."))
 
     return current_category
 
