@@ -1,4 +1,5 @@
 from django.core.exceptions import ValidationError
+from django.utils.translation import gettext as _
 
 from ..models import ProductAttribute, ProductVariant
 from ..models.product_attribute import normalize_numeric_attribute_to_base
@@ -119,9 +120,10 @@ def validate_unique_variant_attribute_combination(
         variant_identifier = other_variant.sku or str(other_variant.pk)
 
         raise ValidationError(
-            (
-                "A variant with the same attribute combination "
-                f'already exists: "{variant_identifier}". '
+            _(
+                "A variant with the same attribute combination already exists: "
+                '"%(variant_identifier)s". '
                 "At least one attribute value must be different."
             )
+            % {"variant_identifier": variant_identifier}
         )

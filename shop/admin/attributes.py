@@ -7,6 +7,10 @@ from .forms import (
     ProductAttributeValueAdminForm,
     ProductVariantAttributeForm,
 )
+from .translation_inlines import (
+    ProductAttributeTranslationInline,
+    ProductAttributeValueTranslationInline,
+)
 
 
 @admin.register(ProductVariantAttribute)
@@ -68,6 +72,7 @@ class ProductAttributeAdmin(ModelAdmin):
     ordering = ("display_order", "name")
     autocomplete_fields = ("categories",)
     filter_horizontal = ("categories",)
+    inlines = (ProductAttributeTranslationInline,)
 
     fields = (
         "name",
@@ -100,6 +105,7 @@ class ProductAttributeValueAdmin(ModelAdmin):
     list_select_related = ("attribute",)
     search_fields = ("value", "slug", "attribute__name")
     ordering = ("attribute__name", "display_order", "value")
+    inlines = (ProductAttributeValueTranslationInline,)
 
     def get_queryset(self, request):
         return (

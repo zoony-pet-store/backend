@@ -56,7 +56,12 @@ class ProductVariant(models.Model):
     # Optional overrides for selected variant.
     description = models.TextField(blank=True)
     short_description = models.TextField(blank=True)
-    badges = models.ManyToManyField(Badge, blank=True, related_name="variants")
+    badges = models.ManyToManyField(
+        Badge,
+        blank=True,
+        db_table="product_variant_badges",
+        related_name="variants",
+    )
 
     auto_badges_enabled = models.BooleanField(
         default=True,
@@ -72,6 +77,7 @@ class ProductVariant(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        db_table = "product_variants"
         ordering = ["-is_default", "price", "id"]
         indexes = [
             models.Index(fields=["product", "is_active"]),

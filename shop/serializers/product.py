@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from ..models import Product, ProductAttribute
+from ..models import Product, ProductAttribute, translated_field
 from .catalog import BrandMinimalSerializer, BrandSerializer
 from .product_attribute import serialize_numeric_attribute_value
 from .product_image import ProductImageSerializer
@@ -9,6 +9,7 @@ from .product_variant import ProductVariantCardSerializer, ProductVariantSeriali
 
 
 class ProductCardSerializer(serializers.ModelSerializer):
+    name = serializers.SerializerMethodField()
     brand = serializers.SerializerMethodField()
     image_url = serializers.SerializerMethodField()
     price = serializers.SerializerMethodField()
@@ -85,10 +86,13 @@ class ProductCardSerializer(serializers.ModelSerializer):
             "id": str(badge.id),
             "name": badge.name,
             "slug": badge.slug,
-            "label": badge.label,
+            "label": translated_field(badge, "label"),
             "color": badge.color,
             "background_color": badge.background_color,
         }
+
+    def get_name(self, obj):
+        return translated_field(obj, "name")
 
     def _get_unique_serialized_badges(self, badges):
         badges_by_slug = {}
@@ -219,7 +223,7 @@ class ProductCardSerializer(serializers.ModelSerializer):
         for variant in self._get_active_variants(obj):
             for item in variant.variant_attributes.all():
                 attribute = item.attribute
-                attr_name = attribute.name
+                attr_name = translated_field(attribute, "name")
 
                 if attr_name not in attributes:
                     attributes[attr_name] = {
@@ -264,7 +268,7 @@ class ProductCardSerializer(serializers.ModelSerializer):
                     attributes[attr_name]["values"].append(
                         {
                             "id": value_id,
-                            "value": item.value.value,
+                            "value": translated_field(item.value, "value"),
                             "slug": item.value.slug,
                         }
                     )
@@ -285,6 +289,10 @@ class ProductCardSerializer(serializers.ModelSerializer):
 
 
 class ProductDetailSerializer(ProductCardSerializer):
+    description = serializers.SerializerMethodField()
+    short_description = serializers.SerializerMethodField()
+    meta_title = serializers.SerializerMethodField()
+    meta_description = serializers.SerializerMethodField()
     variants = serializers.SerializerMethodField()
     images = serializers.SerializerMethodField()
     reviews = serializers.SerializerMethodField()
@@ -327,13 +335,25 @@ class ProductDetailSerializer(ProductCardSerializer):
     def get_category(self, obj):
         return {
             "id": str(obj.category.id),
-            "name": obj.category.name,
+            "name": translated_field(obj.category, "name"),
             "slug": obj.category.slug,
             "animal_type": {
-                "name": obj.category.animal_type.name,
+                "name": translated_field(obj.category.animal_type, "name"),
                 "slug": obj.category.animal_type.slug,
             },
         }
+
+    def get_description(self, obj):
+        return translated_field(obj, "description")
+
+    def get_short_description(self, obj):
+        return translated_field(obj, "short_description")
+
+    def get_meta_title(self, obj):
+        return translated_field(obj, "meta_title")
+
+    def get_meta_description(self, obj):
+        return translated_field(obj, "meta_description")
 
     def get_images(self, obj):
         product_images = [
@@ -355,7 +375,7 @@ class ProductDetailSerializer(ProductCardSerializer):
     def get_content_blocks(self, obj):
         return [
             self._normalize_content_block(block)
-            for block in obj.content_blocks or []
+            for block in translated_field(obj, "content_blocks") or []
             if isinstance(block, dict)
         ]
 

@@ -1,11 +1,12 @@
 from django.http import HttpRequest, HttpResponse, JsonResponse
+from django.utils.translation import gettext as _
 from django.shortcuts import render
 
 from ..models import Category, Customer, Product
 
 
 def health_check(request):
-    return JsonResponse({"status": "ok", "message": "Service is healthy"})
+    return JsonResponse({"status": "ok", "message": _("Service is healthy")})
 
 
 def index(request: HttpRequest) -> HttpResponse:

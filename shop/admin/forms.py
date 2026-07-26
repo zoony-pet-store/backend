@@ -437,6 +437,25 @@ class MediaAssetAdminForm(forms.ModelForm):
             "",
         )
 
+        if upload_file:
+            upload_result = upload_image_to_cloudinary(upload_file)
+            image_url = upload_result.get("secure_url") or upload_result.get("url")
+            public_id = upload_result.get("public_id", "")
+
+            if not image_url:
+                raise forms.ValidationError(
+                    {"upload_file": "Cloudinary did not return image URL."}
+                )
+
+            cleaned_data["image_url"] = image_url
+            cleaned_data["cloudinary_public_id"] = public_id
+            cleaned_data["source"] = MediaAsset.SOURCE_CLOUDINARY
+
+            if not cleaned_data.get("title"):
+                cleaned_data["title"] = upload_file.name
+
+            return cleaned_data
+
         if not upload_file and not image_url:
             raise forms.ValidationError(
                 "Upload image file or provide direct image URL."
@@ -446,26 +465,6 @@ class MediaAssetAdminForm(forms.ModelForm):
 
     def save(self, commit=True):
         instance = super().save(commit=False)
-
-        upload_file = self.cleaned_data.get("upload_file")
-
-        if upload_file:
-            upload_result = upload_image_to_cloudinary(upload_file)
-
-            image_url = upload_result.get("secure_url") or upload_result.get("url")
-            public_id = upload_result.get("public_id", "")
-
-            if not image_url:
-                raise forms.ValidationError(
-                    {"upload_file": "Cloudinary did not return image URL."}
-                )
-
-            instance.image_url = image_url
-            instance.cloudinary_public_id = public_id
-            instance.source = MediaAsset.SOURCE_CLOUDINARY
-
-            if not instance.title:
-                instance.title = upload_file.name
 
         if commit:
             instance.save()

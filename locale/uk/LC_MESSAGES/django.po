@@ -1,0 +1,118 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: zoony\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-07-26 17:29+0300\n"
+"PO-Revision-Date: 2026-07-22 00:00+0000\n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"Language: uk\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#: .\pet_store\settings.py:176
+msgid "English"
+msgstr "Англійська"
+
+#: .\pet_store\settings.py:177
+msgid "Ukrainian"
+msgstr "Українська"
+
+#: .\shop\serializers\auth.py:66
+msgid "Enter a valid email address."
+msgstr "Введіть коректну email-адресу."
+
+#: .\shop\serializers\auth.py:70
+msgid "A user with that email already exists."
+msgstr "Користувач із таким email уже існує."
+
+#: .\shop\serializers\auth.py:78
+msgid "Password fields didn't match."
+msgstr "Паролі не збігаються."
+
+#: .\shop\serializers\auth.py:107 .\shop\serializers\auth.py:110
+msgid "Invalid email or password."
+msgstr "Невірний email або пароль."
+
+#: .\shop\serializers\auth.py:113
+msgid "User account disabled."
+msgstr "Обліковий запис користувача вимкнено."
+
+#: .\shop\serializers\auth.py:116
+msgid "Email not verified."
+msgstr "Email не підтверджено."
+
+#: .\shop\serializers\auth.py:149
+msgid "Invalid Google token."
+msgstr "Невірний Google token."
+
+#: .\shop\serializers\auth.py:155
+msgid "It is not a Google account."
+msgstr "Це не Google-акаунт."
+
+#: .\shop\serializers\auth.py:158
+msgid "Token audience mismatch."
+msgstr "Аудиторія token не збігається."
+
+#: .\shop\serializers\auth.py:163
+msgid "No email in token."
+msgstr "У token немає email."
+
+#: .\shop\serializers\auth.py:166
+msgid "Google account email not verified."
+msgstr "Email Google-акаунта не підтверджено."
+
+#: .\shop\serializers\product_review.py:108
+msgid "Comment is required."
+msgstr "Коментар є обов'язковим."
+
+#: .\shop\validators\product_variants.py:124
+#, python-format
+msgid ""
+"A variant with the same attribute combination already exists: "
+"\"%(variant_identifier)s\". At least one attribute value must be different."
+msgstr ""
+"Варіант із такою самою комбінацією атрибутів уже існує: "
+"\"%(variant_identifier)s\". Принаймні одне значення атрибута має "
+"відрізнятися."
+
+#: .\shop\views\auth.py:66
+msgid "User registered successfully"
+msgstr "Користувача успішно зареєстровано"
+
+#: .\shop\views\auth.py:96
+msgid "Login successfully"
+msgstr "Вхід виконано успішно"
+
+#: .\shop\views\auth.py:123
+msgid "Google authentication successfully"
+msgstr "Автентифікацію через Google виконано успішно"
+
+#: .\shop\views\catalog.py:27
+msgid "Category path is required."
+msgstr "Шлях категорії є обов'язковим."
+
+#: .\shop\views\catalog.py:49
+msgid "Category not found."
+msgstr "Категорію не знайдено."
+
+#: .\shop\views\health.py:9
+msgid "Service is healthy"
+msgstr "Сервіс працює"
+
+#: .\shop\views\media.py:90
+msgid "No image provided"
+msgstr "Зображення не передано"
+
+#: .\shop\views\media.py:98
+msgid "Image too large (max 5MB)"
+msgstr "Зображення завелике (максимум 5 МБ)"
+
+#: .\shop\views\media.py:106
+msgid "product_id is required"
+msgstr "product_id є обов'язковим"
+
+#: .\shop\views\media.py:133
+msgid "display_order must be an integer"
+msgstr "display_order має бути цілим числом"

@@ -90,6 +90,7 @@ class ProductVariantAttribute(models.Model):
     )
 
     class Meta:
+        db_table = "product_variant_attributes"
         ordering = [
             "attribute__display_order",
             "value__display_order",

@@ -47,6 +47,9 @@ class Customer(AbstractUser):
 
     objects = CustomerManager()
 
+    class Meta:
+        db_table = "customers"
+
     def save(self, *args, **kwargs):
         if not self.username:
             self.username = self.email
