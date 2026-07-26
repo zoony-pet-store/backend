@@ -1,9 +1,13 @@
+from functools import partial
+
 from django.db import transaction
 from django.db.models import QuerySet
 from django.db.models.signals import post_delete, post_save, pre_save
 from django.dispatch import receiver
 
 from shop.models import Product, ProductVariant, ProductVariantAttribute
+from shop.models.product_review import ProductReviewImage
+from shop.services.review_images import delete_review_image_from_cloudinary
 from shop.services.variant_attribute_sync import (
     ensure_attribute_for_all_product_variants,
     ensure_variant_has_product_structure,
@@ -90,4 +94,25 @@ def sync_structure_after_attribute_deleted(sender, instance, **kwargs):
             product_id=product_id,
             attribute_id=attribute_id,
         )
+    )
+
+
+@receiver(post_delete, sender=ProductReviewImage)
+def schedule_review_image_cloudinary_deletion(
+    sender,
+    instance,
+    using,
+    **kwargs,
+):
+    public_id = instance.cloudinary_public_id
+
+    if not public_id:
+        return
+
+    transaction.on_commit(
+        partial(
+            delete_review_image_from_cloudinary,
+            public_id,
+        ),
+        using=using,
     )
