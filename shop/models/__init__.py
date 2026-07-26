@@ -28,7 +28,7 @@ from .product_attribute import (
 )
 from .product_attribute_value import ProductAttributeValue
 from .product_image import MediaAsset, ProductImage
-from .product_review import ProductReview
+from .product_review import ProductReview, ProductReviewImage
 from .product_variant import ProductVariant
 from .product_variant_attribute import ProductVariantAttribute
 from .translation import (
@@ -77,6 +77,7 @@ __all__ = [
     "ProductTranslation",
     "ProductVariantAttribute",
     "ProductVariantTranslation",
+    "ProductReviewImage",
     "UNIT_BASE_CONVERSIONS",
     "format_numeric_attribute_value",
     "get_or_create_auto_price_badge",

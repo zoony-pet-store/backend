@@ -1,7 +1,8 @@
 from rest_framework import serializers
 from django.utils.translation import gettext_lazy as _
 
-from ..models import ProductReview
+from ..models import ProductReview, ProductReviewImage
+from ..models.product_review import ReviewImageModerationStatus
 
 
 class ProductReviewItemSerializer(serializers.ModelSerializer):
@@ -39,8 +40,14 @@ class ProductReviewItemSerializer(serializers.ModelSerializer):
         return "Anonymous"
 
     def get_image_urls(self, obj):
-        del obj
-        return []
+        images = getattr(obj, "approved_images", None)
+
+        if images is None:
+            images = obj.images.filter(
+                moderation_status=ReviewImageModerationStatus.APPROVED,
+            )
+
+        return [image.secure_url for image in images]
 
 
 class ProductReviewSerializer(serializers.ModelSerializer):
@@ -104,7 +111,7 @@ class ProductReviewCreateSerializer(serializers.ModelSerializer):
         value = value.strip()
 
         if not value:
-            raise serializers.ValidationError({"comment": _("Comment is required.")})
+            raise serializers.ValidationError(_("Comment is required."))
 
         return value
 
@@ -122,13 +129,29 @@ class ProductReviewCreateSerializer(serializers.ModelSerializer):
         value = value.strip()
         return value or None
 
-    def create(self, validated_data):
-        comment = validated_data.get("comment", "")
-        title = validated_data.get("title", "").strip()
+    def validate(self, attrs):
+        comment = attrs["comment"]
+        title = attrs.get("title", "").strip()
 
         if not title:
             title = comment[:80] or "Product review"
 
-        validated_data["title"] = title
+        attrs["title"] = title
 
-        return super().create(validated_data)
+        return attrs
+
+
+class ProductReviewImageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProductReviewImage
+        fields = [
+            "id",
+            "secure_url",
+            "file_format",
+            "width_px",
+            "height_px",
+            "position",
+            "moderation_status",
+            "created_at",
+        ]
+        read_only_fields = fields
