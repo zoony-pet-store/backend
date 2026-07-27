@@ -24,6 +24,7 @@ from .helpers import (
 from .widgets import (
     AttributeSelectWidget,
     AttributeValueSelectWidget,
+    CategoryTreeSelectWidget,
     MediaAssetSelectWidget,
 )
 
@@ -138,13 +139,68 @@ class BrandForm(ImageUrlAdminFormMixin):
 
 
 class CategoryForm(forms.ModelForm):
+    cascade_animal_type_to_subtree = forms.BooleanField(
+        required=False,
+        label="Move whole subtree to this animal type",
+        help_text=(
+            "Use this when moving a parent category to another animal type. "
+            "All child categories will get the same animal type and their levels "
+            "will be recalculated."
+        ),
+    )
+
     class Meta:
         model = Category
         fields = "__all__"
+        widgets = {
+            "animal_type": forms.HiddenInput,
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self._original_animal_type_id = getattr(self.instance, "animal_type_id", None)
+        self._original_parent_id = getattr(self.instance, "parent_id", None)
+
+        if not self.instance.pk or not self.instance.children.exists():
+            self.fields.pop("cascade_animal_type_to_subtree", None)
+
+        parent_field = self.fields.get("parent")
+
+        if not parent_field or not isinstance(
+            parent_field.widget, CategoryTreeSelectWidget
+        ):
+            return
+
+        animal_type_id = (
+            self.data.get(self.add_prefix("animal_type"))
+            or self.initial.get("animal_type")
+            or getattr(self.instance, "animal_type_id", "")
+        )
+
+        animal_type_id = getattr(animal_type_id, "pk", animal_type_id)
+
+        parent_field.widget.selected_animal_type = str(animal_type_id or "")
 
     def clean(self):
         cleaned = super().clean()
         parent = cleaned.get("parent")
+        animal_type = cleaned.get("animal_type")
+
+        if parent:
+            animal_type = parent.animal_type
+            cleaned["animal_type"] = parent.animal_type
+
+        if (
+            self.instance.pk
+            and animal_type
+            and animal_type.pk != self._original_animal_type_id
+            and self.instance.children.exists()
+            and not cleaned.get("cascade_animal_type_to_subtree")
+        ):
+            raise forms.ValidationError(
+                "Enable subtree move to change animal type for a category with children."
+            )
 
         node = parent
         while node:
@@ -154,6 +210,64 @@ class CategoryForm(forms.ModelForm):
 
         return cleaned
 
+    def sync_subtree_after_save(self, category):
+        if not category.pk:
+            return
+
+        cascade_animal_type = bool(
+            self.cleaned_data.get("cascade_animal_type_to_subtree")
+        )
+        animal_type_changed = (
+            self._original_animal_type_id
+            and category.animal_type_id != self._original_animal_type_id
+        )
+        parent_changed = category.parent_id != self._original_parent_id
+
+        if not parent_changed and not (cascade_animal_type and animal_type_changed):
+            return
+
+        descendants_to_update = []
+        pending = list(
+            category.children.only("id", "parent_id", "animal_type_id", "level")
+        )
+        levels_by_parent = {category.pk: category.level}
+
+        while pending:
+            descendant = pending.pop(0)
+            expected_level = levels_by_parent[descendant.parent_id] + 1
+            should_update = False
+
+            if descendant.level != expected_level:
+                descendant.level = expected_level
+                should_update = True
+
+            if (
+                cascade_animal_type
+                and descendant.animal_type_id != category.animal_type_id
+            ):
+                descendant.animal_type_id = category.animal_type_id
+                should_update = True
+
+            levels_by_parent[descendant.pk] = descendant.level
+
+            if should_update:
+                descendants_to_update.append(descendant)
+
+            pending.extend(
+                Category.objects.filter(parent=descendant).only(
+                    "id",
+                    "parent_id",
+                    "animal_type_id",
+                    "level",
+                )
+            )
+
+        if descendants_to_update:
+            Category.objects.bulk_update(
+                descendants_to_update,
+                ["animal_type", "level"],
+            )
+
 
 class ProductForm(forms.ModelForm):
     class Meta:
@@ -162,6 +276,16 @@ class ProductForm(forms.ModelForm):
         widgets = {
             "content_blocks": JSONFormWidget(schema=PRODUCT_CONTENT_BLOCKS_SCHEMA),
         }
+
+    def clean_category(self):
+        category = self.cleaned_data.get("category")
+
+        if category and category.children.filter(is_active=True).exists():
+            raise forms.ValidationError(
+                "Choose a final subcategory, not a parent category."
+            )
+
+        return category
 
 
 class ProductAttributeAdminForm(forms.ModelForm):
