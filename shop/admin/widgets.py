@@ -171,11 +171,11 @@ class CategoryTreeSelectWidget(forms.Widget):
             'aria-expanded="false">'
             '<span class="category-tree-select__value">{}</span>'
             '<span class="category-tree-select__chevron">▾</span>'
-            '</button>'
+            "</button>"
             '<div class="category-tree-select__panel" hidden>'
             '<div class="category-tree-select__groups"></div>'
-            '</div>'
-            '</div>',
+            "</div>"
+            "</div>",
             self.render_hidden_input(name, selected_value, input_id, attrs),
             json_script(tree, tree_script_id),
             input_id,
@@ -223,7 +223,9 @@ class CategoryTreeSelectWidget(forms.Widget):
         children_by_parent = {}
 
         for category in categories:
-            categories_by_animal.setdefault(category.animal_type_id, category.animal_type)
+            categories_by_animal.setdefault(
+                category.animal_type_id, category.animal_type
+            )
             children_by_parent.setdefault(category.parent_id, []).append(category)
 
         for children in children_by_parent.values():
