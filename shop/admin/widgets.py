@@ -196,8 +196,17 @@ class CategoryTreeSelectWidget(forms.Widget):
     def get_tree(self, selected_value):
         from shop.models import AnimalType, Category
 
-        category_queryset = self.category_queryset or Category.objects.all()
-        animal_type_queryset = self.animal_type_queryset or AnimalType.objects.all()
+        category_queryset = (
+            self.category_queryset
+            if self.category_queryset is not None
+            else Category.objects.all()
+        )
+
+        animal_type_queryset = (
+            self.animal_type_queryset
+            if self.animal_type_queryset is not None
+            else AnimalType.objects.all()
+        )
 
         categories = list(
             category_queryset.select_related("animal_type")
@@ -207,6 +216,7 @@ class CategoryTreeSelectWidget(forms.Widget):
                 "sort_order",
                 "parent_id",
                 "animal_type_id",
+                "is_active",
                 "animal_type__id",
                 "animal_type__name",
             )
@@ -300,8 +310,18 @@ class CategoryTreeSelectWidget(forms.Widget):
 
         if selected:
             node_selected_label = " / ".join(path)
+
         expanded = selected or bool(node_selected_label)
-        selectable = not children if self.select_leaf_only else True
+
+        has_active_children = any(
+            child.is_active for child in children_by_parent.get(category.id, [])
+        )
+
+        selectable = (
+            category.is_active and not has_active_children
+            if self.select_leaf_only
+            else True
+        )
 
         return {
             "id": category_id,
@@ -310,6 +330,7 @@ class CategoryTreeSelectWidget(forms.Widget):
             "path": " / ".join(path),
             "selected": selected,
             "expanded": expanded,
+            "active": category.is_active,
             "selectable": selectable,
             "children": children,
         }, node_selected_label

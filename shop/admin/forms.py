@@ -280,7 +280,13 @@ class ProductForm(forms.ModelForm):
     def clean_category(self):
         category = self.cleaned_data.get("category")
 
-        if category and category.children.filter(is_active=True).exists():
+        if not category:
+            return category
+
+        if not category.is_active:
+            raise forms.ValidationError("Choose an active category.")
+
+        if category.children.filter(is_active=True).exists():
             raise forms.ValidationError(
                 "Choose a final subcategory, not a parent category."
             )

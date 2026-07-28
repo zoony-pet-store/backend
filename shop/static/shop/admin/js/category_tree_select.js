@@ -111,6 +111,15 @@
       option.className = "category-tree-select__option";
       option.textContent = (hasChildren ? "📁 " : "🏷️ ") + node.name;
 
+      if (!node.active) {
+        option.textContent += " — inactive";
+        option.classList.add("category-tree-select__option--inactive");
+      }
+
+      if (!node.selectable && !hasChildren) {
+        option.disabled = true;
+      }
+
       if (hasChildren) {
         row.classList.add("category-tree-select__row--toggleable");
         option.classList.add("category-tree-select__option--folder");
