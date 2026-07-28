@@ -80,5 +80,24 @@ class Category(models.Model):
 
         return slug
 
+    @property
+    def path_parts(self):
+        parts = []
+        category = self
+
+        while category:
+            parts.append(category.name)
+            category = category.parent
+
+        return list(reversed(parts))
+
+    @property
+    def category_path(self):
+        return " / ".join(self.path_parts)
+
+    @property
+    def full_path(self):
+        return " / ".join([self.animal_type.name, self.category_path])
+
     def __str__(self):
         return f"{'--' * self.level} {self.name} ({self.animal_type})"
