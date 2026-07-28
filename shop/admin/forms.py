@@ -163,7 +163,11 @@ class CategoryForm(forms.ModelForm):
         self._original_parent_id = getattr(self.instance, "parent_id", None)
 
         if not self.instance.pk or not self.instance.children.exists():
-            self.fields.pop("cascade_animal_type_to_subtree", None)
+            cascade_field = self.fields["cascade_animal_type_to_subtree"]
+            cascade_field.disabled = True
+            cascade_field.help_text = (
+                "Only applies when this category has child categories."
+            )
 
         parent_field = self.fields.get("parent")
 
