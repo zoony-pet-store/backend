@@ -1,6 +1,6 @@
 from datetime import timedelta
 
-from django.db.models import F
+from django.db.models import F, Q
 from django.utils import timezone
 from rest_framework import permissions
 from rest_framework.response import Response
@@ -24,10 +24,14 @@ class DashboardView(APIView):
             "-created_at"
         )[:20]
 
-        best_sellers = base_queryset.filter(
-            rating__gte=4.5,
-            review_count__gte=10,
-        ).order_by("-rating", "-review_count")[:20]
+        best_sellers = (
+            base_queryset.filter(
+                Q(badges__is_active=True, badges__slug__in=["best_seller", "bestseller"])
+                | Q(rating__gte=4.5, review_count__gte=10)
+            )
+            .distinct()
+            .order_by("-rating", "-review_count")[:20]
+        )
 
         discounted_products = (
             base_queryset.filter(
