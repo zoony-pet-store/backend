@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.db import transaction
 from django.db.models import Count, Q
 from django.utils.html import format_html
 from unfold.admin import ModelAdmin
@@ -11,6 +12,7 @@ from .translation_inlines import (
     BadgeTranslationInline,
     CategoryTranslationInline,
 )
+from .widgets import CategoryTreeSelectWidget
 
 
 @admin.register(AnimalType)
@@ -64,7 +66,6 @@ class CategoryAdmin(ModelAdmin):
     list_filter = ("is_active", "animal_type")
     search_fields = ("name", "slug", "parent__name", "animal_type__name")
     ordering = ("animal_type__name", "sort_order", "name")
-    autocomplete_fields = ("parent",)
     inlines = (CategoryTranslationInline,)
 
     def get_queryset(self, request):
@@ -78,6 +79,24 @@ class CategoryAdmin(ModelAdmin):
                 )
             )
         )
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        formfield = super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+        if db_field.name == "parent":
+            formfield.widget = CategoryTreeSelectWidget(
+                select_leaf_only=False,
+                select_groups=True,
+                animal_type_input_id="id_animal_type",
+                category_queryset=formfield.queryset,
+            )
+
+        return formfield
+
+    def save_model(self, request, obj, form, change):
+        with transaction.atomic():
+            super().save_model(request, obj, form, change)
+            form.sync_subtree_after_save(obj)
 
     def product_count(self, obj):
         return obj._product_count

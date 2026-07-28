@@ -19,6 +19,7 @@ from .translation_inlines import (
     ProductTranslationInline,
     ProductVariantTranslationInline,
 )
+from .widgets import CategoryTreeSelectWidget
 
 
 @admin.register(Product)
@@ -28,7 +29,7 @@ class ProductAdmin(ModelAdmin):
     list_display = (
         "name",
         "brand",
-        "category",
+        "category_display",
         "is_active",
         "rating",
         "review_count",
@@ -38,7 +39,14 @@ class ProductAdmin(ModelAdmin):
         "in_stock_display",
         "created_at",
     )
-    list_select_related = ("brand", "category", "category__animal_type")
+    list_select_related = (
+        "brand",
+        "category",
+        "category__animal_type",
+        "category__parent",
+        "category__parent__parent",
+        "category__parent__parent__parent",
+    )
     list_filter = ("is_active", "brand", "category", "category__animal_type", "badges")
     search_fields = (
         "name",
@@ -50,7 +58,7 @@ class ProductAdmin(ModelAdmin):
         "meta_title",
         "meta_description",
     )
-    autocomplete_fields = ("brand", "category", "badges")
+    autocomplete_fields = ("brand", "badges")
     readonly_fields = (
         "created_at",
         "updated_at",
@@ -142,7 +150,14 @@ class ProductAdmin(ModelAdmin):
         return (
             super()
             .get_queryset(request)
-            .select_related("brand", "category", "category__animal_type")
+            .select_related(
+                "brand",
+                "category",
+                "category__animal_type",
+                "category__parent",
+                "category__parent__parent",
+                "category__parent__parent__parent",
+            )
             .prefetch_related(
                 "badges",
                 "variants",
@@ -153,6 +168,21 @@ class ProductAdmin(ModelAdmin):
                 "images",
             )
         )
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        formfield = super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+        if db_field.name == "category":
+            formfield.widget = CategoryTreeSelectWidget(
+                select_leaf_only=True,
+                category_queryset=formfield.queryset,
+            )
+
+        return formfield
+
+    @admin.display(description="Category", ordering="category__name")
+    def category_display(self, obj):
+        return f"{obj.category.name} ({obj.category.animal_type.name})"
 
     def save_related(self, request, form, formsets, change):
         super().save_related(request, form, formsets, change)
