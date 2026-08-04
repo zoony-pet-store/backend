@@ -2,24 +2,17 @@
     "use strict";
 
     const EDITOR_ID = "id_content_blocks_jsonform";
-    const TYPE_FIELD_PATTERN = /^rjf§\d+§type$/;
-
+    const TYPE_SELECTOR = 'select[name$="§type"]';
     const BLOCK_TYPES = [
-        {
-            value: "text",
-            label: "Text",
-        },
-        {
-            value: "key_value",
-            label: "Key / Value",
-        },
-        {
-            value: "table",
-            label: "Table",
-        },
+        { value: "text", label: "Text" },
+        { value: "key_value", label: "Key / Value" },
+        { value: "table", label: "Table" },
     ];
 
+    let observer = null;
     let refreshScheduled = false;
+    let bootAttempt = 0;
+    let bootTimer = null;
 
     function setText(element, value) {
         if (element && element.textContent !== value) {
@@ -27,38 +20,44 @@
         }
     }
 
-    function getDirectGroupTitle(group) {
-        if (!group) {
-            return "";
-        }
-
-        const titleElement = group.querySelector(
-            [
-                ":scope > .rjf-form-group-title",
-                ":scope > .rjf-form-group-inner > .rjf-form-group-title",
-            ].join(", ")
+    function findNamedElement(container, name) {
+        return (
+            Array.from(container.querySelectorAll("[name]")).find(
+                (element) => element.name === name
+            ) || null
         );
+    }
+
+    function getDirectGroupTitleElement(group) {
+        return group?.querySelector(
+            ":scope > .rjf-form-group-title, " +
+                ":scope > .rjf-form-group-inner > .rjf-form-group-title"
+        );
+    }
+
+    function getDirectGroupTitle(group) {
+        const titleElement = getDirectGroupTitleElement(group);
 
         if (!titleElement) {
             return "";
         }
 
-        const titleClone = titleElement.cloneNode(true);
+        const clone = titleElement.cloneNode(true);
 
-        titleClone.querySelectorAll("button").forEach((button) => {
+        clone.querySelectorAll("button").forEach((button) => {
             button.remove();
         });
 
-        return titleClone.textContent.trim();
+        return clone.textContent.trim();
     }
 
-    function findGroupByTitle(block, expectedTitle) {
+    function findGroupByTitle(container, title) {
         return (
             Array.from(
-                block.querySelectorAll(".rjf-form-group")
-            ).find((group) => {
-                return getDirectGroupTitle(group) === expectedTitle;
-            }) || null
+                container.querySelectorAll(".rjf-form-group")
+            ).find(
+                (group) => getDirectGroupTitle(group) === title
+            ) || null
         );
     }
 
@@ -67,24 +66,11 @@
             return null;
         }
 
-        const parent = group.parentElement;
-
-        if (
-            parent &&
-            parent.classList.contains("rjf-form-group-wrapper")
-        ) {
-            return parent;
-        }
-
-        return group;
-    }
-
-    function findNamedElement(container, expectedName) {
-        return (
-            Array.from(container.querySelectorAll("[name]")).find(
-                (element) => element.name === expectedName
-            ) || null
-        );
+        return group.parentElement?.classList.contains(
+            "rjf-form-group-wrapper"
+        )
+            ? group.parentElement
+            : group;
     }
 
     function setSectionVisible(section, visible) {
@@ -99,22 +85,61 @@
         );
     }
 
-    function createBlockHeader(block, prefix) {
+    function setNativeSelectValue(select, value) {
+        const descriptor = Object.getOwnPropertyDescriptor(
+            HTMLSelectElement.prototype,
+            "value"
+        );
+
+        if (descriptor?.set) {
+            descriptor.set.call(select, value);
+        } else {
+            select.value = value;
+        }
+
+        select.dispatchEvent(
+            new Event("input", {
+                bubbles: true,
+            })
+        );
+
+        select.dispatchEvent(
+            new Event("change", {
+                bubbles: true,
+            })
+        );
+    }
+
+    function getBlockTypeLabel(value) {
+        return (
+            BLOCK_TYPES.find(
+                (item) => item.value === value
+            )?.label || "Select type"
+        );
+    }
+
+    function createBlockHeader(
+        block,
+        prefix,
+        typeSelect
+    ) {
         let header = block.querySelector(
             ":scope > .content-block-card__header"
         );
 
         if (!header) {
             header = document.createElement("div");
-            header.className = "content-block-card__header";
+            header.className =
+                "content-block-card__header";
 
-            const title = document.createElement("strong");
-            title.className = "content-block-card__title";
+            header.innerHTML = `
+                <div class="content-block-card__heading">
+                    <strong class="content-block-card__title"></strong>
+                    <span class="content-block-card__metadata"></span>
+                </div>
+                <span class="content-block-card__type"></span>
+            `;
 
-            const metadata = document.createElement("span");
-            metadata.className = "content-block-card__metadata";
-
-            header.append(title, metadata);
             block.prepend(header);
         }
 
@@ -122,49 +147,64 @@
             block,
             `${prefix}§title`
         );
+
         const keyInput = findNamedElement(
             block,
             `${prefix}§key`
         );
 
-        const title =
-            titleInput?.value.trim() || "Untitled content block";
-        const key = keyInput?.value.trim() || "No key";
-
         setText(
-            header.querySelector(".content-block-card__title"),
-            title
+            header.querySelector(
+                ".content-block-card__title"
+            ),
+            titleInput?.value.trim() ||
+                "Untitled content block"
         );
 
         setText(
-            header.querySelector(".content-block-card__metadata"),
-            key
+            header.querySelector(
+                ".content-block-card__metadata"
+            ),
+            keyInput?.value.trim() || "No key"
+        );
+
+        setText(
+            header.querySelector(
+                ".content-block-card__type"
+            ),
+            getBlockTypeLabel(typeSelect.value)
         );
     }
 
-    function updateTypeSwitcher(select, switcher) {
-        const selectedType = select.value;
-
+    function updateTypeSwitcher(
+        select,
         switcher
-            .querySelectorAll(".content-block-type-switcher__button")
+    ) {
+        switcher
+            .querySelectorAll(
+                ".content-block-type-switcher__button"
+            )
             .forEach((button) => {
-                const isActive =
-                    button.dataset.blockType === selectedType;
+                const active =
+                    button.dataset.blockType ===
+                    select.value;
 
                 button.classList.toggle(
                     "content-block-type-switcher__button--active",
-                    isActive
+                    active
                 );
 
                 button.setAttribute(
                     "aria-pressed",
-                    String(isActive)
+                    String(active)
                 );
             });
     }
 
     function createTypeSwitcher(select) {
-        const formRow = select.closest(".rjf-form-row");
+        const formRow = select.closest(
+            ".rjf-form-row"
+        );
 
         if (!formRow) {
             return;
@@ -175,137 +215,209 @@
         );
 
         if (!switcher) {
-            switcher = document.createElement("div");
-            switcher.className = "content-block-type-switcher";
-            switcher.setAttribute("role", "group");
+            switcher =
+                document.createElement("div");
+
+            switcher.className =
+                "content-block-type-switcher";
+
+            switcher.setAttribute(
+                "role",
+                "group"
+            );
+
             switcher.setAttribute(
                 "aria-label",
                 "Content block type"
             );
 
-            BLOCK_TYPES.forEach(({ value, label }) => {
-                const button = document.createElement("button");
+            BLOCK_TYPES.forEach(
+                ({ value, label }) => {
+                    const button =
+                        document.createElement(
+                            "button"
+                        );
 
-                button.type = "button";
-                button.className =
-                    "content-block-type-switcher__button";
-                button.dataset.blockType = value;
-                button.textContent = label;
-                button.setAttribute("aria-pressed", "false");
+                    button.type = "button";
+                    button.className =
+                        "content-block-type-switcher__button";
+                    button.dataset.blockType = value;
+                    button.textContent = label;
 
-                button.addEventListener("click", () => {
-                    if (select.value === value) {
-                        return;
-                    }
-
-                    select.value = value;
-
-                    select.dispatchEvent(
-                        new Event("input", {
-                            bubbles: true,
-                        })
+                    button.setAttribute(
+                        "aria-pressed",
+                        "false"
                     );
 
-                    select.dispatchEvent(
-                        new Event("change", {
-                            bubbles: true,
-                        })
+                    button.addEventListener(
+                        "click",
+                        () => {
+                            if (
+                                select.value === value
+                            ) {
+                                return;
+                            }
+
+                            setNativeSelectValue(
+                                select,
+                                value
+                            );
+
+                            updateTypeSwitcher(
+                                select,
+                                switcher
+                            );
+
+                            scheduleRefresh();
+                        }
                     );
 
-                    updateTypeSwitcher(select, switcher);
-                    scheduleRefresh();
-                });
+                    switcher.append(button);
+                }
+            );
 
-                switcher.append(button);
-            });
-
-            const nativeInputGroup = select.closest(
+            const inputGroup = select.closest(
                 ".rjf-input-group"
             );
 
-            if (nativeInputGroup) {
-                nativeInputGroup.classList.add(
+            if (inputGroup) {
+                inputGroup.classList.add(
                     "content-block-type-select--native"
                 );
 
-                nativeInputGroup.insertAdjacentElement(
+                inputGroup.insertAdjacentElement(
                     "afterend",
                     switcher
                 );
             }
+        }
 
-            select.addEventListener("change", () => {
-                updateTypeSwitcher(select, switcher);
-                scheduleRefresh();
-            });
+        if (
+            select.dataset
+                .contentBlockTypeBound !== "true"
+        ) {
+            select.dataset.contentBlockTypeBound =
+                "true";
+
+            select.addEventListener(
+                "change",
+                () => {
+                    updateTypeSwitcher(
+                        select,
+                        switcher
+                    );
+
+                    scheduleRefresh();
+                }
+            );
         }
 
         updateTypeSwitcher(select, switcher);
     }
 
-    function renameGroupAddButton(group, label) {
+    function renameGroupAddButton(
+        group,
+        label
+    ) {
         if (!group) {
             return;
         }
 
         const button = Array.from(
-            group.querySelectorAll(".rjf-add-button")
-        ).find((candidate) => {
-            return candidate.closest(".rjf-form-group") === group;
-        });
+            group.querySelectorAll(
+                ".rjf-add-button"
+            )
+        ).find(
+            (candidate) =>
+                candidate.closest(
+                    ".rjf-form-group"
+                ) === group
+        );
 
-        if (!button) {
-            return;
+        if (button) {
+            setText(button, label);
+
+            button.title = label.replace(
+                /^\+\s*/,
+                ""
+            );
         }
-
-        setText(button, label);
-        button.title = label.replace(/^\+\s*/, "");
     }
 
-    function enhanceKeyValueRows(group, prefix) {
+    function enhanceKeyValueRows(
+        group,
+        prefix
+    ) {
         if (!group) {
             return;
         }
 
-        group.classList.add("content-block-key-value");
+        group.classList.add(
+            "content-block-key-value"
+        );
 
-        const rowWrappers = new Set();
-        const itemPrefix = `${prefix}§content§items§`;
+        const itemPrefix =
+            `${prefix}§content§items§`;
 
-        group.querySelectorAll("[name]").forEach((element) => {
-            if (!element.name.startsWith(itemPrefix)) {
-                return;
-            }
+        const wrappers = new Set();
 
-            const rowWrapper = element.closest(
-                ".rjf-form-group-wrapper"
-            );
+        group
+            .querySelectorAll("[name]")
+            .forEach((element) => {
+                if (
+                    !element.name.startsWith(
+                        itemPrefix
+                    )
+                ) {
+                    return;
+                }
 
-            if (rowWrapper) {
-                rowWrappers.add(rowWrapper);
-            }
-        });
+                const wrapper =
+                    element.closest(
+                        ".rjf-form-group-wrapper"
+                    );
 
-        rowWrappers.forEach((rowWrapper) => {
-            rowWrapper.classList.add(
+                if (wrapper) {
+                    wrappers.add(wrapper);
+                }
+            });
+
+        wrappers.forEach((wrapper) => {
+            wrapper.classList.add(
                 "content-block-key-value__row"
             );
         });
 
-        renameGroupAddButton(group, "+ Add key/value");
+        renameGroupAddButton(
+            group,
+            "+ Add key/value"
+        );
     }
 
-    function enhanceTableGroup(group, buttonLabel) {
+    function enhanceTableGroup(
+        group,
+        label
+    ) {
         if (!group) {
             return;
         }
 
-        group.classList.add("content-block-table-section");
-        renameGroupAddButton(group, buttonLabel);
+        group.classList.add(
+            "content-block-table-section"
+        );
+
+        renameGroupAddButton(
+            group,
+            label
+        );
     }
 
     function enhanceBlock(typeSelect) {
-        const prefix = typeSelect.name.replace(/§type$/, "");
+        const prefix =
+            typeSelect.name.replace(
+                /§type$/,
+                ""
+            );
 
         const block = typeSelect.closest(
             ".rjf-form-group-wrapper"
@@ -315,134 +427,179 @@
             return;
         }
 
-        block.classList.add("content-block-card");
+        block.classList.add(
+            "content-block-card"
+        );
 
-        createBlockHeader(block, prefix);
+        createBlockHeader(
+            block,
+            prefix,
+            typeSelect
+        );
+
         createTypeSwitcher(typeSelect);
 
-        const textInput = findNamedElement(
-            block,
-            `${prefix}§content§text`
+        const contentGroup =
+            findGroupByTitle(
+                block,
+                "Content"
+            );
+
+        const keyValueGroup =
+            findGroupByTitle(
+                block,
+                "Key / Value items"
+            );
+
+        const columnsGroup =
+            findGroupByTitle(
+                block,
+                "Table columns"
+            );
+
+        const rowsGroup =
+            findGroupByTitle(
+                block,
+                "Table rows"
+            );
+
+        contentGroup?.classList.add(
+            "content-block-content"
         );
 
-        const textSection = textInput?.closest(
-            ".rjf-form-row"
+        enhanceKeyValueRows(
+            keyValueGroup,
+            prefix
         );
 
-        const keyValueGroup = findGroupByTitle(
-            block,
-            "Key / Value items"
+        enhanceTableGroup(
+            columnsGroup,
+            "+ Add column"
         );
 
-        const columnsGroup = findGroupByTitle(
-            block,
-            "Table columns"
+        enhanceTableGroup(
+            rowsGroup,
+            "+ Add row"
         );
 
-        const rowsGroup = findGroupByTitle(
-            block,
-            "Table rows"
-        );
-
-        const keyValueSection =
-            getSectionContainer(keyValueGroup);
-
-        const columnsSection =
-            getSectionContainer(columnsGroup);
-
-        const rowsSection =
-            getSectionContainer(rowsGroup);
-
-        enhanceKeyValueRows(keyValueGroup, prefix);
-        enhanceTableGroup(columnsGroup, "+ Add column");
-        enhanceTableGroup(rowsGroup, "+ Add row");
-
-        const selectedType = typeSelect.value;
+        const textInput =
+            findNamedElement(
+                block,
+                `${prefix}§content§text`
+            );
 
         setSectionVisible(
-            textSection,
-            selectedType === "text"
+            textInput?.closest(
+                ".rjf-form-row"
+            ) || null,
+            typeSelect.value === "text"
         );
 
         setSectionVisible(
-            keyValueSection,
-            selectedType === "key_value"
+            getSectionContainer(
+                keyValueGroup
+            ),
+            typeSelect.value ===
+                "key_value"
         );
 
         setSectionVisible(
-            columnsSection,
-            selectedType === "table"
+            getSectionContainer(
+                columnsGroup
+            ),
+            typeSelect.value === "table"
         );
 
         setSectionVisible(
-            rowsSection,
-            selectedType === "table"
+            getSectionContainer(
+                rowsGroup
+            ),
+            typeSelect.value === "table"
         );
     }
 
     function enhanceRootGroup(root) {
-        const rootGroup = root.querySelector(
-            [
-                ":scope > .rjf-form-wrapper",
-                "> fieldset",
-                "> .rjf-form-group-wrapper",
-                "> .rjf-form-group",
-            ].join(" ")
-        );
+        const rootGroup =
+            root.querySelector(
+                ".rjf-form-wrapper > fieldset > " +
+                    ".rjf-form-group-wrapper > " +
+                    ".rjf-form-group"
+            );
 
         if (!rootGroup) {
             return;
         }
 
-        const rootTitle = rootGroup.querySelector(
-            ":scope > .rjf-form-group-title"
+        rootGroup.classList.add(
+            "content-blocks-editor__root-group"
         );
 
-        if (rootTitle) {
-            rootTitle.classList.add(
-                "content-blocks-editor__root-title"
+        getDirectGroupTitleElement(
+            rootGroup
+        )?.classList.add(
+            "content-blocks-editor__root-title"
+        );
+
+        const addButton = Array.from(
+            rootGroup.querySelectorAll(
+                ".rjf-add-button"
+            )
+        ).find(
+            (button) =>
+                button.closest(
+                    ".rjf-form-group"
+                ) === rootGroup
+        );
+
+        if (addButton) {
+            setText(
+                addButton,
+                "+ Add content block"
             );
-        }
 
-        const rootAddButton = Array.from(
-            rootGroup.querySelectorAll(".rjf-add-button")
-        ).find((button) => {
-            return button.closest(".rjf-form-group") === rootGroup;
-        });
+            addButton.title =
+                "Add content block";
 
-        if (rootAddButton) {
-            setText(rootAddButton, "+ Add content block");
-            rootAddButton.title = "Add content block";
-            rootAddButton.classList.add(
+            addButton.classList.add(
                 "content-blocks-editor__add-block"
             );
         }
     }
 
     function enhanceEditor() {
-        const root = document.getElementById(EDITOR_ID);
+        const root =
+            document.getElementById(
+                EDITOR_ID
+            );
 
         if (!root) {
-            return;
+            return false;
         }
 
-        root.classList.add("content-blocks-editor");
+        root.classList.add(
+            "content-blocks-editor"
+        );
 
-        const unfoldSection = root.closest(".max-w-4xl");
-
-        if (unfoldSection) {
-            unfoldSection.classList.add(
-                "content-blocks-admin-section"
-            );
-        }
+        root.closest(
+            ".field-row"
+        )?.classList.add(
+            "content-blocks-admin-field"
+        );
 
         enhanceRootGroup(root);
 
-        root.querySelectorAll("select[name]").forEach((select) => {
-            if (TYPE_FIELD_PATTERN.test(select.name)) {
-                enhanceBlock(select);
-            }
-        });
+        root.querySelectorAll(
+            TYPE_SELECTOR
+        ).forEach(enhanceBlock);
+
+        root.dataset.contentBlocksEditorBooted =
+            "true";
+
+        return (
+            root.querySelectorAll(
+                TYPE_SELECTOR
+            ).length > 0
+        );
     }
 
     function scheduleRefresh() {
@@ -454,23 +611,43 @@
 
         window.requestAnimationFrame(() => {
             refreshScheduled = false;
-            enhanceEditor();
+
+            try {
+                enhanceEditor();
+            } catch (error) {
+                console.error(
+                    "Content blocks editor refresh failed:",
+                    error
+                );
+            }
         });
     }
 
-    function initialize() {
-        enhanceEditor();
-
-        const root = document.getElementById(EDITOR_ID);
-
-        if (!root) {
+    function bindEditorEvents(root) {
+        if (
+            root.dataset
+                .contentBlocksEventsBound ===
+            "true"
+        ) {
             return;
         }
 
-        root.addEventListener("input", scheduleRefresh);
-        root.addEventListener("change", scheduleRefresh);
+        root.dataset.contentBlocksEventsBound =
+            "true";
 
-        const observer = new MutationObserver(scheduleRefresh);
+        root.addEventListener(
+            "input",
+            scheduleRefresh
+        );
+
+        root.addEventListener(
+            "change",
+            scheduleRefresh
+        );
+
+        observer = new MutationObserver(
+            scheduleRefresh
+        );
 
         observer.observe(root, {
             childList: true,
@@ -478,15 +655,77 @@
         });
     }
 
-    if (document.readyState === "loading") {
+    function bootContentBlocksEditor() {
+        const root =
+            document.getElementById(
+                EDITOR_ID
+            );
+
+        if (!root) {
+            return false;
+        }
+
+        bindEditorEvents(root);
+
+        try {
+            return enhanceEditor();
+        } catch (error) {
+            console.error(
+                "Content blocks editor initialization failed:",
+                error
+            );
+
+            return false;
+        }
+    }
+
+    function retryBoot() {
+        const ready =
+            bootContentBlocksEditor();
+
+        if (
+            ready ||
+            bootAttempt >= 100
+        ) {
+            return;
+        }
+
+        bootAttempt += 1;
+
+        window.clearTimeout(
+            bootTimer
+        );
+
+        bootTimer =
+            window.setTimeout(
+                retryBoot,
+                100
+            );
+    }
+
+    window.bootContentBlocksEditor =
+        bootContentBlocksEditor;
+
+    if (
+        document.readyState ===
+        "loading"
+    ) {
         document.addEventListener(
             "DOMContentLoaded",
-            initialize,
+            retryBoot,
             {
                 once: true,
             }
         );
     } else {
-        initialize();
+        retryBoot();
     }
+
+    window.addEventListener(
+        "load",
+        retryBoot,
+        {
+            once: true,
+        }
+    );
 })();
