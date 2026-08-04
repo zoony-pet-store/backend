@@ -1,0 +1,80 @@
+<dialog
+    id="related-object-modal"
+    class="related-object-modal"
+    aria-labelledby="related-object-modal-title"
+    aria-describedby="related-object-modal-description"
+>
+    <header class="related-object-modal__header">
+        <div>
+            <h2 id="related-object-modal-title">
+                Edit related object
+            </h2>
+
+            <p
+                id="related-object-modal-description"
+                class="related-object-modal__description"
+            >
+                Changes are saved independently from the product form.
+            </p>
+        </div>
+
+        <button
+            type="button"
+            class="related-object-modal__close"
+            data-related-modal-close
+            aria-label="Close modal"
+        >
+            ×
+        </button>
+    </header>
+
+    <div
+        class="related-object-modal__body"
+        data-related-modal-body
+    >
+        <div
+            class="related-object-modal__loader"
+            data-related-modal-loader
+            role="status"
+            aria-live="polite"
+        >
+            <span class="related-object-modal__spinner"></span>
+            Loading form…
+        </div>
+
+        <iframe
+            class="related-object-modal__iframe"
+            data-related-modal-iframe
+            title="Related object form"
+        ></iframe>
+    </div>
+</dialog>
+
+<div
+    class="related-object-modal-notice"
+    data-related-modal-notice
+    role="status"
+    aria-live="polite"
+    hidden
+>
+    <span data-related-modal-notice-text></span>
+
+    <div class="related-object-modal-notice__actions">
+        <button
+            type="button"
+            class="button"
+            data-related-modal-refresh
+        >
+            Refresh variants
+        </button>
+
+        <button
+            type="button"
+            class="related-object-modal-notice__dismiss"
+            data-related-modal-notice-dismiss
+            aria-label="Dismiss"
+        >
+            ×
+        </button>
+    </div>
+</div>

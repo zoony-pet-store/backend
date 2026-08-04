@@ -1,0 +1,17 @@
+{% load static %}
+
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Saved</title>
+</head>
+<body>
+    {{ modal_payload|json_script:"related-object-modal-payload" }}
+
+    <script
+        src="{% static 'shop/admin/js/related_object_modal_response.js' %}"
+    ></script>
+</body>
+</html>
