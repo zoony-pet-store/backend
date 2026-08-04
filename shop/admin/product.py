@@ -32,9 +32,15 @@ class ProductAdmin(ModelAdmin):
 
     class Media:
         css = {
-            "all": ("shop/admin/css/related_object_modal.css",),
+            "all": (
+                "shop/admin/css/related_object_modal.css",
+                "shop/admin/css/content_blocks_editor.css",
+            ),
         }
-        js = ("shop/admin/js/related_object_modal.js",)
+        js = (
+            "shop/admin/js/related_object_modal.js",
+            "shop/admin/js/content_blocks_editor.js",
+        )
 
     list_display = (
         "name",
