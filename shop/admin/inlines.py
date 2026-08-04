@@ -1,3 +1,7 @@
+from urllib.parse import urlencode
+
+from django.urls import reverse
+from django.utils.html import format_html
 from unfold.admin import StackedInline, TabularInline
 
 from ..models import CartItem, ProductImage, ProductVariant, ProductVariantAttribute
@@ -116,9 +120,10 @@ class ProductVariantImagesInline(TabularInline):
 class ProductVariantsInline(TabularInline):
     model = ProductVariant
     formset = ProductVariantSummaryInlineFormSet
+
     extra = 0
     can_delete = False
-    show_change_link = True
+    show_change_link = False
 
     fields = (
         "variant_preview",
@@ -129,6 +134,7 @@ class ProductVariantsInline(TabularInline):
         "stock",
         "is_active_display",
         "is_default",
+        "edit_variant_modal",
     )
 
     readonly_fields = (
@@ -139,6 +145,7 @@ class ProductVariantsInline(TabularInline):
         "old_price",
         "stock",
         "is_active_display",
+        "edit_variant_modal",
     )
 
     ordering = ("-is_default", "price", "id")
@@ -195,6 +202,32 @@ class ProductVariantsInline(TabularInline):
 
     is_active_display.short_description = "Active"
     is_active_display.boolean = True
+
+    def edit_variant_modal(self, obj):
+        if not obj or not obj.pk:
+            return "—"
+
+        base_url = reverse(
+            "admin:shop_productvariant_change",
+            args=[obj.pk],
+        )
+        regular_url = base_url
+        modal_url = f"{base_url}?{urlencode({'_modal': '1'})}"
+
+        return format_html(
+            '<a href="{}" '
+            'class="button js-related-object-modal" '
+            'data-modal-url="{}" '
+            'data-modal-title="Edit variant {}" '
+            'aria-haspopup="dialog">'
+            "Edit"
+            "</a>",
+            regular_url,
+            modal_url,
+            obj.sku or obj.pk,
+        )
+
+    edit_variant_modal.short_description = "Actions"
 
 
 class ProductImagesInline(TabularInline):
