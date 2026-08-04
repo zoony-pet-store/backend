@@ -3,6 +3,7 @@ from django.forms.models import BaseInlineFormSet
 
 from ..models import ProductVariant
 from .helpers import unset_other_main_images
+from ..services.variant_attribute_sync import get_template_attribute_items_for_product
 from ..validators.product_variants import (
     validate_unique_variant_attribute_combination,
     build_variant_attribute_signature_item,
@@ -17,14 +18,18 @@ class ProductVariantAttributeInlineFormSet(BaseInlineFormSet):
             return
 
         seen_attribute_ids = set()
-        signature_items = []
+        signature_items_by_attribute_id = {}
         has_duplicate_attributes = False
 
         for form in self.forms:
             if self.can_delete and self._should_delete_form(form):
                 continue
 
-            cleaned_data = form.cleaned_data
+            cleaned_data = getattr(form, "cleaned_data", None)
+
+            if not cleaned_data:
+                continue
+
             attribute = cleaned_data.get("attribute")
 
             # Empty extra inline form.
@@ -55,12 +60,43 @@ class ProductVariantAttributeInlineFormSet(BaseInlineFormSet):
             )
 
             if signature_item is not None:
-                signature_items.append(signature_item)
+                signature_items_by_attribute_id[attribute.pk] = signature_item
 
         if has_duplicate_attributes:
             raise forms.ValidationError("Please correct duplicate attributes below.")
 
-        current_signature = frozenset(signature_items)
+        product_id = getattr(
+            self.instance,
+            "product_id",
+            None,
+        )
+
+        if product_id:
+            template_items = get_template_attribute_items_for_product(
+                product_id=product_id,
+                exclude_variant_id=(self.instance.pk if self.instance.pk else None),
+            )
+
+            for template_item in template_items:
+                attribute_id = template_item.attribute_id
+
+                # The submitted inline value always has priority.
+                if attribute_id in seen_attribute_ids:
+                    continue
+
+                template_signature_item = build_variant_attribute_signature_item(
+                    attribute=template_item.attribute,
+                    value_id=template_item.value_id,
+                    value_numeric=template_item.value_numeric,
+                    unit=template_item.unit or "",
+                )
+
+                if template_signature_item is not None:
+                    signature_items_by_attribute_id[attribute_id] = (
+                        template_signature_item
+                    )
+
+        current_signature = frozenset(signature_items_by_attribute_id.values())
 
         validate_unique_variant_attribute_combination(
             variant=self.instance,
