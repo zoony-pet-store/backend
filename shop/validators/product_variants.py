@@ -93,37 +93,166 @@ def build_saved_variant_signature(variant):
     return frozenset(signature_items)
 
 
-def validate_unique_variant_attribute_combination(
+def build_saved_variant_signature_map(variant):
+    """
+    Return a mapping:
+
+        attribute_id -> normalized signature item or None
+
+    None means that the variant has an empty placeholder for this attribute.
+    """
+    signature_items_by_attribute_id = {}
+
+    for variant_attribute in variant.variant_attributes.all():
+        attribute = variant_attribute.attribute
+
+        if attribute.type == ProductAttribute.AttributeType.SELECT:
+            signature_item = build_variant_attribute_signature_item(
+                attribute=attribute,
+                value_id=variant_attribute.value_id,
+            )
+
+        elif attribute.type == ProductAttribute.AttributeType.NUMERIC:
+            normalized_value = variant_attribute.value_numeric_base
+            base_unit = variant_attribute.base_unit
+
+            if normalized_value is not None and base_unit:
+                signature_item = (
+                    "numeric",
+                    variant_attribute.attribute_id,
+                    normalized_value,
+                    base_unit,
+                )
+            else:
+                signature_item = build_variant_attribute_signature_item(
+                    attribute=attribute,
+                    value_numeric=variant_attribute.value_numeric,
+                    unit=variant_attribute.unit,
+                )
+
+        else:
+            signature_item = None
+
+        signature_items_by_attribute_id[variant_attribute.attribute_id] = signature_item
+
+    return signature_items_by_attribute_id
+
+
+def validate_unique_variant_combinations_after_sync(
     *,
     variant,
     current_signature,
+    propagated_signature_items_by_attribute_id,
+    removed_attribute_ids=None,
 ):
     """
-    Ensure no other variant of the same product has this exact signature.
+    Validate projected variant signatures after attribute synchronization.
+
+    Attribute synchronization can:
+
+    - add a missing attribute and its value to sibling variants;
+    - fill empty placeholders in sibling variants;
+    - remove an attribute from every variant.
+
+    Validation must account for those changes before the database is updated.
     """
     if not variant or not variant.product_id:
         return
 
-    other_variants = ProductVariant.objects.filter(product_id=variant.product_id)
+    removed_attribute_ids = set(removed_attribute_ids or ())
+
+    other_variants = ProductVariant.objects.filter(
+        product_id=variant.product_id,
+    )
 
     if variant.pk:
         other_variants = other_variants.exclude(pk=variant.pk)
 
-    other_variants = other_variants.prefetch_related("variant_attributes__attribute")
+    other_variants = other_variants.prefetch_related(
+        "variant_attributes__attribute",
+    )
+
+    projected_variants = [
+        {
+            "identifier": get_variant_identifier(variant),
+            "signature": current_signature,
+            "changed": True,
+        }
+    ]
 
     for other_variant in other_variants:
-        other_signature = build_saved_variant_signature(other_variant)
+        signature_map = build_saved_variant_signature_map(other_variant)
+        signature_changed = False
 
-        if other_signature != current_signature:
+        # Deleting an attribute from one variant removes it
+        # from every variant of the product.
+        for attribute_id in removed_attribute_ids:
+            if attribute_id in signature_map:
+                signature_map.pop(attribute_id)
+                signature_changed = True
+
+        # Synchronization copies the value only into missing
+        # or completely empty sibling rows.
+        for (
+            attribute_id,
+            source_signature_item,
+        ) in propagated_signature_items_by_attribute_id.items():
+            existing_signature_item = signature_map.get(attribute_id)
+
+            if existing_signature_item is not None:
+                continue
+
+            signature_map[attribute_id] = source_signature_item
+            signature_changed = True
+
+        projected_signature = frozenset(
+            signature_item
+            for signature_item in signature_map.values()
+            if signature_item is not None
+        )
+
+        projected_variants.append(
+            {
+                "identifier": get_variant_identifier(other_variant),
+                "signature": projected_signature,
+                "changed": signature_changed,
+            }
+        )
+
+    variants_by_signature = {}
+
+    for projected_variant in projected_variants:
+        signature = projected_variant["signature"]
+        existing_variant = variants_by_signature.get(signature)
+
+        if existing_variant is None:
+            variants_by_signature[signature] = projected_variant
             continue
 
-        variant_identifier = other_variant.sku or str(other_variant.pk)
+        # Do not block the operation because of an unrelated legacy
+        # duplicate that already existed before this request.
+        if not (existing_variant["changed"] or projected_variant["changed"]):
+            continue
 
         raise ValidationError(
             _(
-                "A variant with the same attribute combination already exists: "
-                '"%(variant_identifier)s". '
-                "At least one attribute value must be different."
+                "Saving these attribute changes would create duplicate "
+                'variant combinations: "%(first_variant)s" and '
+                '"%(second_variant)s". At least one attribute value '
+                "must be different."
             )
-            % {"variant_identifier": variant_identifier}
+            % {
+                "first_variant": existing_variant["identifier"],
+                "second_variant": projected_variant["identifier"],
+            }
         )
+
+
+def get_variant_identifier(variant):
+    if variant.sku:
+        return variant.sku
+
+    if variant.pk:
+        return str(variant.pk)
+
+    return _("new variant")
