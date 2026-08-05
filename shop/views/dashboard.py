@@ -26,7 +26,10 @@ class DashboardView(APIView):
 
         best_sellers = (
             base_queryset.filter(
-                Q(badges__is_active=True, badges__slug__in=["best_seller", "bestseller"])
+                Q(
+                    badges__is_active=True,
+                    badges__slug__in=["best_seller", "bestseller"],
+                )
                 | Q(rating__gte=4.5, review_count__gte=10)
             )
             .distinct()
