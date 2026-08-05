@@ -117,7 +117,7 @@ class Migration(migrations.Migration):
             model_name="productreview",
             index=models.Index(
                 fields=["product", "moderation_status"],
-                name="product_rev_product_73a968_idx",
+                name="product_rev_product_f98a5e_idx",
             ),
         ),
     ]

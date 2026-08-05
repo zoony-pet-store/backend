@@ -112,13 +112,9 @@ class ProductReviewAdmin(ModelAdmin):
 
     class Media:
         css = {
-            "all": (
-                "shop/admin/css/review_admin.css",
-            ),
+            "all": ("shop/admin/css/review_admin.css",),
         }
-        js = (
-            "shop/admin/js/review_rejection_reason.js",
-        )
+        js = ("shop/admin/js/review_rejection_reason.js",)
 
     list_display = (
         "reviewer_name",
@@ -150,9 +146,7 @@ class ProductReviewAdmin(ModelAdmin):
         "negative_comment",
     )
 
-    list_editable = (
-        "moderation_status",
-    )
+    list_editable = ("moderation_status",)
 
     autocomplete_fields = (
         "product",

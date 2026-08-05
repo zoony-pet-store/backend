@@ -35,7 +35,9 @@ class ProductReview(models.Model):
         blank=True,
     )
 
-    rating_score = models.PositiveSmallIntegerField(choices=[(i, i) for i in range(1, 11)])
+    rating_score = models.PositiveSmallIntegerField(
+        choices=[(i, i) for i in range(1, 11)]
+    )
     reviewer_name = models.CharField(max_length=120, blank=True)
     reviewer_email = models.EmailField(blank=True)
     title = models.CharField(max_length=200, blank=True)

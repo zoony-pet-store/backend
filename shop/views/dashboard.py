@@ -17,7 +17,9 @@ def get_dashboard_product_queryset():
     )
 
     return get_product_base_queryset().annotate(
-        dashboard_rating_score=Avg("reviews__rating_score", filter=approved_reviews_filter),
+        dashboard_rating_score=Avg(
+            "reviews__rating_score", filter=approved_reviews_filter
+        ),
         dashboard_review_count=Count(
             "reviews",
             filter=approved_reviews_filter,
