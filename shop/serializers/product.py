@@ -15,6 +15,8 @@ class ProductCardSerializer(serializers.ModelSerializer):
     price = serializers.SerializerMethodField()
     old_price = serializers.SerializerMethodField()
     discount_percentage = serializers.SerializerMethodField()
+    rating = serializers.SerializerMethodField()
+    review_count = serializers.SerializerMethodField()
     in_stock = serializers.BooleanField(read_only=True)
 
     badges = serializers.SerializerMethodField()
@@ -115,6 +117,19 @@ class ProductCardSerializer(serializers.ModelSerializer):
             "slug": obj.brand.slug,
             "logo_url": obj.brand.logo_url,
         }
+
+    def get_rating(self, obj):
+        dashboard_rating_score = getattr(obj, "dashboard_rating_score", None)
+
+        if dashboard_rating_score is not None:
+            return float(dashboard_rating_score) / 2
+
+        rating = getattr(obj, "dashboard_rating", obj.rating)
+        return float(rating or 0)
+
+    def get_review_count(self, obj):
+        review_count = getattr(obj, "dashboard_review_count", obj.review_count)
+        return review_count or 0
 
     def get_price(self, obj):
         default_variant = self._get_default_variant(obj)

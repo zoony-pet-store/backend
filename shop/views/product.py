@@ -4,7 +4,13 @@ from rest_framework import generics, permissions
 from rest_framework.filters import OrderingFilter
 from rest_framework.pagination import PageNumberPagination
 
-from ..models import Product, ProductImage, ProductReview, ProductVariant
+from ..models import (
+    Product,
+    ProductImage,
+    ProductReview,
+    ProductVariant,
+    ReviewModerationStatus,
+)
 from ..serializers import ProductCardSerializer, ProductDetailSerializer
 
 
@@ -63,6 +69,7 @@ def get_product_detail_queryset():
             "reviews",
             queryset=(
                 ProductReview.objects.filter(is_active=True)
+                .filter(moderation_status=ReviewModerationStatus.APPROVED)
                 .select_related("user")
                 .order_by("-created_at")
             ),

@@ -1,5 +1,4 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.db.models import Avg, Count
 from django.shortcuts import get_object_or_404
 from drf_yasg.utils import swagger_auto_schema
 from rest_framework import permissions, status
@@ -11,21 +10,9 @@ from rest_framework.views import APIView
 from ..models import Product
 from ..serializers import (
     ProductReviewCreateSerializer,
-    ProductReviewItemSerializer,
 )
 from ..services.review_images import ReviewImageUploadError
 from ..services.reviews import create_product_review_with_images
-
-
-def update_product_review_stats(product):
-    stats = product.reviews.filter(is_active=True).aggregate(
-        avg_rating=Avg("rating"),
-        review_count=Count("id"),
-    )
-
-    product.rating = stats["avg_rating"] or 0
-    product.review_count = stats["review_count"] or 0
-    product.save(update_fields=["rating", "review_count"])
 
 
 class ProductReviewCreateView(APIView):
@@ -41,7 +28,7 @@ class ProductReviewCreateView(APIView):
         operation_description="Create product review",
         request_body=ProductReviewCreateSerializer,
         responses={
-            201: ProductReviewItemSerializer,
+            201: "Created",
             400: "Bad Request",
             401: "Unauthorized",
             404: "Product not found",
@@ -83,14 +70,10 @@ class ProductReviewCreateView(APIView):
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
 
-        update_product_review_stats(product)
-
-        response_serializer = ProductReviewItemSerializer(
-            review,
-            context={"request": request},
-        )
-
         return Response(
-            response_serializer.data,
+            {
+                "id": str(review.id),
+                "moderation_status": review.moderation_status,
+            },
             status=status.HTTP_201_CREATED,
         )

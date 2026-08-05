@@ -29,7 +29,7 @@ from .product import (
     get_product_detail_queryset,
     get_request_query_params,
 )
-from .product_review import ProductReviewCreateView, update_product_review_stats
+from .product_review import ProductReviewCreateView
 
 __all__ = [
     "CurrentUserView",
@@ -59,5 +59,4 @@ __all__ = [
     "create_tokens_for_user",
     "health_check",
     "index",
-    "update_product_review_stats",
 ]
