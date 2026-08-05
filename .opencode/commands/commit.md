@@ -5,7 +5,7 @@ Apply the following project skills before proceeding:
 - `code-quality-policy`
 - `commit-policy`
 
-Before performing any Git operations, review the repository-specific guidance. This includes `AGENTS.md`, in root directory, relevant README documentation, package or build scripts, CI and configuration files, and any project-local skills located under `.agents`.
+Before performing any Git operations, review the repository-specific guidance. This includes `AGENTS.md`, in root directory, relevant README documentation, package or build scripts, CI and configuration files, and any project-local OpenCode skills located in `../.opencode`.
 
 Workflow:
 

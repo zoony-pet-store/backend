@@ -7,13 +7,13 @@ description: 'Use when committing, preparing branches, merging, pushing, or crea
 
 ## Project Workflows
 
-The project defines reusable Git workflows under `.agents/command-prompts/`.
+The project defines reusable Git workflows under `../.opencode`.
 
 When the user requests a Git workflow in natural language, use the corresponding project workflow instead of improvising a custom Git sequence.
 
 ## Authorization
 
-- Use the project-local custom slash commands for matching git workflows: `/commit`, `/changes`, `/pr`, `/pull`, `/push`, `/start`, and `/merge`.
+- Use the project-local custom slash commands for matching git workflows: `/commit`, `/changes`, `/pr`, `/push`, `/start`.
 - When the user asks for one of those workflows in natural language, follow the matching custom command workflow rather than improvising an ad-hoc git sequence.
 - Never create commits automatically during normal tasks.
 - Only run `git commit` when the user invokes `/commit` or directly asks to commit in the current turn.

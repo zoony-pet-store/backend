@@ -11,7 +11,7 @@ Use this skill when reviewing, testing, refactoring, or preparing code changes.
 
 - Prefer project-specific `code-quality-policy` guidance and repository guidance over any shared baseline.
 - Read `AGENTS.md` first.
-- Check relevant README files, package scripts, CI/config files, tool configs, scripts, docs, and project-local `.agents` skills before choosing commands.
+- Check relevant README files, package scripts, CI/config files, tool configs, scripts, docs, and project-local OpenCode skills located in `../.opencode` before choosing commands.
 - Prefer small correct changes over broad rewrites.
 - Preserve unrelated user changes and avoid formatting-only churn.
 
