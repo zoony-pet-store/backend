@@ -251,10 +251,6 @@ class ProductReviewAdmin(ModelAdmin):
     def has_delete_permission(self, request, obj=None):
         return False
 
-    def _update_related_product_stats(self, queryset):
-        product_ids = list(queryset.values_list("product_id", flat=True).distinct())
-        self._update_product_stats_by_ids(product_ids)
-
     def _update_product_stats_by_ids(self, product_ids):
         product_model = ProductReview._meta.get_field("product").related_model
 
@@ -262,6 +258,8 @@ class ProductReviewAdmin(ModelAdmin):
             update_product_review_stats(product)
 
     def save_model(self, request, obj, form, change):
+        if obj.moderation_status != ReviewModerationStatus.REJECTED:
+            obj.rejection_reason = None
         super().save_model(request, obj, form, change)
         update_product_review_stats(obj.product)
 
@@ -277,11 +275,19 @@ class ProductReviewAdmin(ModelAdmin):
 
     @admin.action(description="Approve selected reviews")
     def approve_selected_reviews(self, request, queryset):
+        product_ids = list(
+            queryset.values_list(
+                "product_id",
+                flat=True,
+            ).distinct()
+        )
+
         updated = queryset.update(
             moderation_status=ReviewModerationStatus.APPROVED,
             rejection_reason=None,
         )
-        self._update_related_product_stats(queryset)
+
+        self._update_product_stats_by_ids(product_ids)
 
         self.message_user(
             request,
@@ -291,10 +297,18 @@ class ProductReviewAdmin(ModelAdmin):
 
     @admin.action(description="Reject selected reviews")
     def reject_selected_reviews(self, request, queryset):
+        product_ids = list(
+            queryset.values_list(
+                "product_id",
+                flat=True,
+            ).distinct()
+        )
+
         updated = queryset.update(
             moderation_status=ReviewModerationStatus.REJECTED,
         )
-        self._update_related_product_stats(queryset)
+
+        self._update_product_stats_by_ids(product_ids)
 
         self.message_user(
             request,

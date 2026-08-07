@@ -10,6 +10,7 @@ from rest_framework.views import APIView
 from ..models import Product
 from ..serializers import (
     ProductReviewCreateSerializer,
+    ProductReviewCreateResponseSerializer,
 )
 from ..services.review_images import ReviewImageUploadError
 from ..services.reviews import create_product_review_with_images
@@ -28,7 +29,7 @@ class ProductReviewCreateView(APIView):
         operation_description="Create product review",
         request_body=ProductReviewCreateSerializer,
         responses={
-            201: "Created",
+            201: ProductReviewCreateResponseSerializer,
             400: "Bad Request",
             401: "Unauthorized",
             404: "Product not found",

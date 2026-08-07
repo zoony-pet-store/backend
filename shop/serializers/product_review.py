@@ -4,7 +4,7 @@ from rest_framework import serializers
 from django.utils.translation import gettext_lazy as _
 
 from ..models import ProductReview, ProductReviewImage
-from ..models.product_review import ReviewImageModerationStatus
+from ..models.product_review import ReviewImageModerationStatus, ReviewModerationStatus
 
 
 class ProductReviewItemSerializer(serializers.ModelSerializer):
@@ -179,6 +179,13 @@ class ProductReviewCreateSerializer(serializers.ModelSerializer):
         attrs["rating_score"] = int(rating * 2)
 
         return attrs
+
+
+class ProductReviewCreateResponseSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    moderation_status = serializers.ChoiceField(
+        choices=ReviewModerationStatus.choices,
+    )
 
 
 class ProductReviewImageSerializer(serializers.ModelSerializer):

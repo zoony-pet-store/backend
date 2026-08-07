@@ -2,7 +2,10 @@ from django.db import migrations, models
 
 
 def migrate_existing_reviews(apps, schema_editor):
-    ProductReview = apps.get_model("shop", "ProductReview")
+    ProductReview = apps.get_model(
+        "shop",
+        "ProductReview",
+    )
 
     for review in ProductReview.objects.all().only(
         "id",
@@ -13,10 +16,14 @@ def migrate_existing_reviews(apps, schema_editor):
         review.rating_score = review.rating_score * 2
 
         if not review.reviewer_name and review.title:
-            review.reviewer_name = review.title.strip()
-            review.title = ""
+            review.reviewer_name = review.title.strip()[:120]
 
-        review.save(update_fields=["rating_score", "reviewer_name", "title"])
+        review.save(
+            update_fields=[
+                "rating_score",
+                "reviewer_name",
+            ]
+        )
 
 
 def reverse_existing_reviews(apps, schema_editor):
