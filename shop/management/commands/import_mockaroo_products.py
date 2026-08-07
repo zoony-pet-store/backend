@@ -56,7 +56,7 @@ NUMERIC_ATTRIBUTE_COLUMNS = {
 
 
 NUMERIC_VALUE_WITH_UNIT_PATTERN = re.compile(
-    r"^\s*(?P<value>\d+(?:[.,]\d+)?)\s*-?\s*(?P<unit>kg|g|ml|l|pcs|pack|packs)\s*$",
+    r"^\s*(?P<value>\d+(?:[.,]\d+)?)\s*-?\s*" r"(?P<unit>kg|g|ml|l|pcs|pack|packs)\s*$",
     re.IGNORECASE,
 )
 
@@ -146,7 +146,8 @@ class Command(BaseCommand):
                     self.stdout.write(
                         self.style.SUCCESS(
                             f"Imported row {row_number}: "
-                            f"{result['product'].name} / {result['variant'].sku}"
+                            f"{result['product'].name} / "
+                            f"{result['variant'].sku}"
                         )
                     )
 
