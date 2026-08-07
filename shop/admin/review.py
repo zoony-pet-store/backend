@@ -1,3 +1,4 @@
+from django import forms
 from django.contrib import admin, messages
 from django.db.models import Count
 from django.utils.html import format_html
@@ -6,14 +7,18 @@ from unfold.admin import ModelAdmin, TabularInline
 from ..models.product_review import (
     ProductReview,
     ProductReviewImage,
+    ReviewModerationStatus,
     ReviewImageModerationStatus,
 )
+from ..services.reviews import update_product_review_stats
 
 
 class ProductReviewImageInline(TabularInline):
     """Review images displayed inside ProductReview admin."""
 
     model = ProductReviewImage
+    verbose_name = "Review image"
+    verbose_name_plural = "Review images"
 
     extra = 0
     max_num = 5
@@ -86,14 +91,36 @@ class ProductReviewImageInline(TabularInline):
         return f"{obj.width_px} × {obj.height_px} px"
 
 
+class ProductReviewAdminForm(forms.ModelForm):
+    class Meta:
+        model = ProductReview
+        fields = "__all__"
+        widgets = {
+            "rejection_reason": forms.Textarea(
+                attrs={
+                    "class": "review-rejection-reason-autogrow",
+                    "data-max-rows": "7",
+                    "rows": 2,
+                }
+            ),
+        }
+
+
 @admin.register(ProductReview)
 class ProductReviewAdmin(ModelAdmin):
+    form = ProductReviewAdminForm
+
+    class Media:
+        css = {
+            "all": ("shop/admin/css/review_admin.css",),
+        }
+        js = ("shop/admin/js/review_rejection_reason.js",)
+
     list_display = (
+        "reviewer_name",
         "product",
-        "user",
-        "rating",
-        "is_verified",
-        "is_active",
+        "rating_display",
+        "moderation_status",
         "image_count",
         "created_at",
     )
@@ -104,20 +131,22 @@ class ProductReviewAdmin(ModelAdmin):
     )
 
     list_filter = (
-        "is_active",
-        "is_verified",
-        "rating",
+        "moderation_status",
         "created_at",
     )
 
     search_fields = (
         "product__name",
         "user__email",
+        "reviewer_name",
+        "reviewer_email",
         "title",
         "comment",
         "positive_comment",
         "negative_comment",
     )
+
+    list_editable = ("moderation_status",)
 
     autocomplete_fields = (
         "product",
@@ -125,6 +154,18 @@ class ProductReviewAdmin(ModelAdmin):
     )
 
     readonly_fields = (
+        "product",
+        "user",
+        "reviewer_name",
+        "reviewer_email",
+        "rating_display",
+        "rating_score",
+        "is_verified",
+        "is_active",
+        "title",
+        "comment",
+        "positive_comment",
+        "negative_comment",
         "created_at",
         "updated_at",
     )
@@ -133,22 +174,31 @@ class ProductReviewAdmin(ModelAdmin):
     ordering = ("-created_at",)
 
     actions = (
-        "activate_reviews",
-        "deactivate_reviews",
+        "approve_selected_reviews",
+        "reject_selected_reviews",
     )
 
     inlines = (ProductReviewImageInline,)
 
     fieldsets = (
         (
-            "Review",
+            "Moderation",
+            {
+                "fields": (
+                    "moderation_status",
+                    "rejection_reason",
+                )
+            },
+        ),
+        (
+            "Review content",
             {
                 "fields": (
                     "product",
                     "user",
-                    "rating",
-                    "is_verified",
-                    "is_active",
+                    "reviewer_name",
+                    "reviewer_email",
+                    "rating_display",
                     "title",
                     "comment",
                     "positive_comment",
@@ -160,6 +210,8 @@ class ProductReviewAdmin(ModelAdmin):
             "Service info",
             {
                 "fields": (
+                    "is_verified",
+                    "is_active",
                     "created_at",
                     "updated_at",
                 ),
@@ -184,23 +236,83 @@ class ProductReviewAdmin(ModelAdmin):
     def image_count(self, obj):
         return obj.admin_image_count
 
-    @admin.action(description="Activate selected reviews")
-    def activate_reviews(self, request, queryset):
-        updated = queryset.update(is_active=True)
+    @admin.display(description="Rating", ordering="rating_score")
+    def rating_display(self, obj):
+        rating = obj.rating_score / 2
+
+        if rating.is_integer():
+            rating = int(rating)
+
+        return f"{rating} / 5"
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def _update_product_stats_by_ids(self, product_ids):
+        product_model = ProductReview._meta.get_field("product").related_model
+
+        for product in product_model.objects.filter(id__in=product_ids):
+            update_product_review_stats(product)
+
+    def save_model(self, request, obj, form, change):
+        if obj.moderation_status != ReviewModerationStatus.REJECTED:
+            obj.rejection_reason = None
+        super().save_model(request, obj, form, change)
+        update_product_review_stats(obj.product)
+
+    def delete_model(self, request, obj):
+        product_id = obj.product_id
+        super().delete_model(request, obj)
+        self._update_product_stats_by_ids([product_id])
+
+    def delete_queryset(self, request, queryset):
+        product_ids = list(queryset.values_list("product_id", flat=True).distinct())
+        super().delete_queryset(request, queryset)
+        self._update_product_stats_by_ids(product_ids)
+
+    @admin.action(description="Approve selected reviews")
+    def approve_selected_reviews(self, request, queryset):
+        product_ids = list(
+            queryset.values_list(
+                "product_id",
+                flat=True,
+            ).distinct()
+        )
+
+        updated = queryset.update(
+            moderation_status=ReviewModerationStatus.APPROVED,
+            rejection_reason=None,
+        )
+
+        self._update_product_stats_by_ids(product_ids)
 
         self.message_user(
             request,
-            f"{updated} review(s) activated.",
+            f"{updated} review(s) approved.",
             level=messages.SUCCESS,
         )
 
-    @admin.action(description="Deactivate selected reviews")
-    def deactivate_reviews(self, request, queryset):
-        updated = queryset.update(is_active=False)
+    @admin.action(description="Reject selected reviews")
+    def reject_selected_reviews(self, request, queryset):
+        product_ids = list(
+            queryset.values_list(
+                "product_id",
+                flat=True,
+            ).distinct()
+        )
+
+        updated = queryset.update(
+            moderation_status=ReviewModerationStatus.REJECTED,
+        )
+
+        self._update_product_stats_by_ids(product_ids)
 
         self.message_user(
             request,
-            f"{updated} review(s) deactivated.",
+            f"{updated} review(s) rejected.",
             level=messages.WARNING,
         )
 

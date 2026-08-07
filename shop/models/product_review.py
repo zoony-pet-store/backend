@@ -12,6 +12,12 @@ class ReviewImageModerationStatus(models.TextChoices):
     REJECTED = "rejected", "Rejected"
 
 
+class ReviewModerationStatus(models.TextChoices):
+    PENDING = "pending", "Pending"
+    APPROVED = "approved", "Approved"
+    REJECTED = "rejected", "Rejected"
+
+
 class ProductReview(models.Model):
     """Product review."""
 
@@ -29,8 +35,12 @@ class ProductReview(models.Model):
         blank=True,
     )
 
-    rating = models.IntegerField(choices=[(i, i) for i in range(1, 6)])
-    title = models.CharField(max_length=200)
+    rating_score = models.PositiveSmallIntegerField(
+        choices=[(i, i) for i in range(1, 11)]
+    )
+    reviewer_name = models.CharField(max_length=120, blank=True)
+    reviewer_email = models.EmailField(blank=True)
+    title = models.CharField(max_length=200, blank=True)
     comment = models.TextField()
 
     positive_comment = models.TextField(blank=True, null=True)
@@ -38,6 +48,13 @@ class ProductReview(models.Model):
 
     is_verified = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
+
+    moderation_status = models.CharField(
+        max_length=10,
+        choices=ReviewModerationStatus.choices,
+        default=ReviewModerationStatus.PENDING,
+    )
+    rejection_reason = models.TextField(blank=True, null=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -47,6 +64,7 @@ class ProductReview(models.Model):
         ordering = ["-created_at"]
         indexes = [
             models.Index(fields=["product", "is_active"]),
+            models.Index(fields=["product", "moderation_status"]),
             models.Index(fields=["user"]),
         ]
 

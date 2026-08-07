@@ -1,0 +1,46 @@
+textarea.review-rejection-reason-autogrow {
+  width: 100%;
+  min-height: 5.5rem;
+  box-sizing: border-box;
+  resize: none;
+  border: 1px solid rgb(75 85 99);
+  border-radius: 0.375rem;
+}
+
+textarea.review-rejection-reason-autogrow:focus {
+  border-color: rgb(147 51 234);
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+}
+
+.inline-group td,
+.inline-group th {
+  vertical-align: middle;
+}
+
+.inline-group .delete,
+.inline-group .field-preview,
+.inline-group .field-moderation_status,
+.inline-group .field-position,
+.inline-group .field-file_format,
+.inline-group .field-file_size_display,
+.inline-group .field-dimensions,
+.inline-group .field-created_at {
+  vertical-align: middle;
+}
+
+.inline-group .field-preview img {
+  display: block;
+}
+
+td.delete {
+  vertical-align: middle !important;
+  text-align: center;
+}
+
+td.delete label {
+  align-items: center;
+  display: inline-flex !important;
+  justify-content: center;
+  margin-top: 0 !important;
+}
