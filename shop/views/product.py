@@ -4,7 +4,17 @@ from rest_framework import generics, permissions
 from rest_framework.filters import OrderingFilter
 from rest_framework.pagination import PageNumberPagination
 
-from ..models import Product, ProductImage, ProductReview, ProductVariant
+from ..models import (
+    Product,
+    ProductImage,
+    ProductReview,
+    ProductReviewImage,
+    ProductVariant,
+)
+from ..models.product_review import (
+    ReviewImageModerationStatus,
+    ReviewModerationStatus,
+)
 from ..serializers import ProductCardSerializer, ProductDetailSerializer
 
 
@@ -58,14 +68,33 @@ def get_product_base_queryset():
 
 
 def get_product_detail_queryset():
+    approved_review_images = ProductReviewImage.objects.filter(
+        moderation_status=ReviewImageModerationStatus.APPROVED,
+    ).order_by(
+        "position",
+        "created_at",
+    )
+
+    approved_reviews = (
+        ProductReview.objects.filter(
+            is_active=True,
+            moderation_status=ReviewModerationStatus.APPROVED,
+        )
+        .select_related("user")
+        .prefetch_related(
+            Prefetch(
+                "images",
+                queryset=approved_review_images,
+                to_attr="approved_images",
+            )
+        )
+        .order_by("-created_at")
+    )
+
     return get_product_base_queryset().prefetch_related(
         Prefetch(
             "reviews",
-            queryset=(
-                ProductReview.objects.filter(is_active=True)
-                .select_related("user")
-                .order_by("-created_at")
-            ),
+            queryset=approved_reviews,
         ),
     )
 

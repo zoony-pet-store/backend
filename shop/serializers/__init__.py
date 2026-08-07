@@ -34,6 +34,7 @@ from .product_review import (
     ProductReviewCreateSerializer,
     ProductReviewItemSerializer,
     ProductReviewSerializer,
+    ProductReviewCreateResponseSerializer,
 )
 from .product_variant import ProductVariantCardSerializer, ProductVariantSerializer
 
@@ -58,6 +59,7 @@ __all__ = [
     "ProductFilterSerializer",
     "ProductImageSerializer",
     "ProductReviewCreateSerializer",
+    "ProductReviewCreateResponseSerializer",
     "ProductReviewItemSerializer",
     "ProductReviewSerializer",
     "ProductVariantCardSerializer",
