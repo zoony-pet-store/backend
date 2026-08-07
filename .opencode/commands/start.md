@@ -35,6 +35,7 @@ Workflow:
 9. Fetch the latest remote references.
 10. Determine the repository's default branch from the remote configuration. If it cannot be resolved, ask the user instead of guessing.
 11. Verify that the default branch exists.
-12. Switch to the default branch and update it safely.
+12. Switch to the default branch and update it using fast-forward only.
+If a fast-forward update is not possible, stop and report the divergence.
 13. Create and switch to the new branch.
 14. If dependency-related files changed while updating the default branch, follow the project's `dependency-policy`.

@@ -15,8 +15,10 @@ Workflow:
    - recent commit history;
    - upstream tracking configuration.
 3. If no synchronization strategy is provided:
-   - default to `rebase` when the working tree is clean;
-   - if uncommitted changes exist, ask the user which strategy to use before continuing.
+   - fetch the latest remote references;
+   - if the local branch is up to date or only ahead of its upstream, proceed without synchronization;
+   - if the local and remote branches have diverged, ask the user to choose `rebase` or `merge`;
+   - never automatically choose `rebase` or `merge`.
 4. Fetch the latest remote changes.
 5. If the current branch tracks a remote branch, synchronize it using the selected strategy before pushing.
 6. For the `rebase` strategy:

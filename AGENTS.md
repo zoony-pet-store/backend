@@ -49,7 +49,21 @@ Keep responses concise and to the point - unless the user asks otherwise
 - Identify changes from the plan that can be implemented in parallel, and use sub-agents to implement the features efficiently
 - When using sub-agents to implement features, act as a coordinator only
 - Use the best model for the task - premium models for complex tasks (like coding) and mid-tier models for simpler tasks, like documentation
-- After completing features (large or small), always run commands like lint, type check and next build to check code quality
+- After making changes, run the checks relevant to the modified files.
+Default backend validation:
+
+```bash
+  black --check .
+  python manage.py check
+  python manage.py makemigrations --check --dry-run
+  pytest
+```
+
+  For Docker, deployment, dependency, or runtime changes, also validate the image with:
+
+```bash
+  docker build -t zoony-backend .
+```
 
 ## Testing
 - Use any testing tools, libraries available to the project for testing your changes

@@ -22,10 +22,6 @@ class ProductReviewImage(models.Model):
     review = models.ForeignKey(ProductReview, on_delete=models.CASCADE, related_name="images")
     secure_url = models.URLField(max_length=1000)
     position = models.PositiveSmallIntegerField(default=0)
-
-    class Meta:
-        ordering = ["position", "created_at"]
-        indexes = [models.Index(fields=["review", "position"])]
 ```
 
 ## Checklist

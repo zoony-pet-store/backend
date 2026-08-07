@@ -1,11 +1,3 @@
 {
-  "version": 1,
-  "skills": {
-    "django-expert": {
-      "source": "personamanagmentlayer/pcl",
-      "sourceType": "github",
-      "skillPath": "stdlib/frameworks/django-expert/SKILL.md",
-      "computedHash": "b888e5bce5dd5f6bdb39fccace2973044415e1c1296553ac1968cce844c54ccc"
-    }
-  }
+  "version": 1
 }

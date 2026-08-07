@@ -17,19 +17,13 @@ description: Use when creating or modifying DRF serializers.
 ## Project Example
 
 ```python
-class ProductReviewCreateSerializer(serializers.ModelSerializer):
-    rating = serializers.IntegerField(min_value=1, max_value=5)
-    comment = serializers.CharField(required=True, allow_blank=False, min_length=1)
+def validate_name(self, value):
+    value = value.strip()
 
-    class Meta:
-        model = ProductReview
-        fields = ["rating", "title", "comment", "positive_comment", "negative_comment"]
+    if not value:
+        raise serializers.ValidationError(_("Name is required."))
 
-    def validate_comment(self, value):
-        value = value.strip()
-        if not value:
-            raise serializers.ValidationError(_("Comment is required."))
-        return value
+    return value
 ```
 
 ## Checklist
