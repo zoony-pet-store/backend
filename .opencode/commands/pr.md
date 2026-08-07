@@ -18,7 +18,8 @@ Workflow:
    - commits unique to the current branch;
    - the diff against the target branch.
 5. Check whether an open merge request already exists for the current branch. If one exists, update it instead of creating a duplicate.
-6. Analyze the branch changes and generate:
+6. Create description in Ucrainian language
+. Analyze the branch changes and generate:
    - a concise title following the repository convention;
    - a structured merge request description based on the actual code changes, not only commit messages.
 7. The description should include:
