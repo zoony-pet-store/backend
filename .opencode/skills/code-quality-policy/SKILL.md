@@ -11,7 +11,7 @@ Use this skill when reviewing, testing, refactoring, or preparing code changes.
 
 - Prefer project-specific `code-quality-policy` guidance and repository guidance over any shared baseline.
 - Read `AGENTS.md` first.
-- Check relevant README files, package scripts, CI/config files, tool configs, scripts, docs, and project-local OpenCode skills located in `../.opencode` before choosing commands.
+- Check relevant README files, CI/config files, tool configs, scripts, docs, and project-local OpenCode skills located in `.opencode/skills/` before choosing commands.
 - Prefer small correct changes over broad rewrites.
 - Preserve unrelated user changes and avoid formatting-only churn.
 
@@ -33,7 +33,7 @@ Use this skill when reviewing, testing, refactoring, or preparing code changes.
   - Migration verification: `python manage.py makemigrations --check --dry-run`
   - Apply migrations: `python manage.py migrate`
   - Tests: `pytest` or focused `pytest shop/tests_shop.py::test_name`
-- Follow the repository's CI order when performing a complete quality verification.
+- Follow `.gitlab-ci.yml` order for complete verification: `black --check .`, `python manage.py check`, `python manage.py makemigrations --check --dry-run`, `python manage.py migrate --noinput`, then `pytest`.
 
 ## Generated And Mirrored State
 
@@ -47,6 +47,6 @@ Use this skill when reviewing, testing, refactoring, or preparing code changes.
 ## Verification
 
 - Run focused verification appropriate to touched files and explain skipped checks.
-- Always run the full repository formatting check with `black .` before considering code quality verification complete.
+- Always run the full repository formatting check with `black --check .` before considering code quality verification complete. Use `black .` only when formatting changes are intended.
 - Use `git diff --check` before committing or when preparing a final quality pass.
 - If a check updates generated or formatted files, inspect the diff and rerun the relevant check.

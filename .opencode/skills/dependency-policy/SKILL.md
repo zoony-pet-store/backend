@@ -1,6 +1,6 @@
 ---
 name: 'dependency-policy'
-description: 'Use when Python dependencies, virtual environments, installs, branch switches, pulls, merges, or worktree starts may affect the project`s dependency state.'
+description: "Use when Python dependencies, virtual environments, installs, branch switches, pulls, merges, or worktree starts may affect the project's dependency state."
 ---
 
 # Dependencies Policy

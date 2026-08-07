@@ -7,7 +7,7 @@ description: 'Use when committing, preparing branches, merging, pushing, or crea
 
 ## Project Workflows
 
-The project defines reusable Git workflows under `../.opencode`.
+The project defines reusable Git workflows under `.opencode/commands/`.
 
 When the user requests a Git workflow in natural language, use the corresponding project workflow instead of improvising a custom Git sequence.
 
@@ -44,5 +44,6 @@ When the user requests a Git workflow in natural language, use the corresponding
 ## Commit Messages
 
 - Use the subject format `feat|fix|chore|hotfix|etc: short message of changes`, choosing the best type for the actual changes.
+- Scoped subjects are valid when they match history, for example `feat(reviews): add image uploads and moderation`.
 - Keep message style consistent with repository history.
 - For non-trivial changes, include a detailed body explaining what changed, why, important implementation or verification details, and useful references such as spec documents or documentation links.
