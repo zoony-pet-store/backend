@@ -15,9 +15,25 @@ product variants, add items to a cart, and place orders.
 - **Backend deployment:** Render
 - **Production database:** Supabase PostgreSQL
 
-## Project Diagram
+## Database Diagram
 
-![Online Pet Store diagram](Images/Diagram_online_pet_store.drawio.svg)
+View the latest diagram in [docs/database-diagram.md](docs/database-diagram.md). Diagram is automatically generated
+from the Django model registry. The generator discovers local project models with
+Django introspection, maps model fields to Mermaid field types, and emits
+ForeignKey, OneToOneField, and ManyToManyField relationships in deterministic
+order.
+
+Regenerate the diagram after adding or changing Django models:
+
+```bash
+python manage.py generate_diagram
+```
+
+Do not edit `docs/database-diagram.md` manually. New Django models appear in the
+diagram automatically after the command is run.
+
+No `make diagram` shortcut was added because this repository does not currently
+include a Makefile, Justfile, Taskfile, or similar command runner.
 
 ## Local Development Setup
 
