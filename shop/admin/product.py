@@ -5,6 +5,7 @@ from django.urls import reverse
 from django.utils.html import format_html
 from unfold.admin import ModelAdmin
 
+from .modal import RelatedObjectModalAdminMixin
 from ..models import Product, ProductVariant
 from .forms import ProductForm, ProductVariantForm
 from .helpers import sync_product_variants_auto_badges
@@ -25,6 +26,21 @@ from .widgets import CategoryTreeSelectWidget
 @admin.register(Product)
 class ProductAdmin(ModelAdmin):
     form = ProductForm
+
+    change_form_outer_after_template = "admin/shop/product/related_object_modal.html"
+    warn_unsaved_form = True
+
+    class Media:
+        css = {
+            "all": (
+                "shop/admin/css/related_object_modal.css",
+                "shop/admin/css/content_blocks_editor.css",
+            ),
+        }
+        js = (
+            "shop/admin/js/related_object_modal.js",
+            "shop/admin/js/content_blocks_editor.js",
+        )
 
     list_display = (
         "name",
@@ -207,20 +223,33 @@ class ProductAdmin(ModelAdmin):
 
         sync_product_variants_auto_badges(product)
 
+    @admin.display(description="Add variant")
     def add_variant_link(self, obj):
         if not obj or not obj.pk:
             return "Save product before adding variants."
 
-        url = reverse("admin:shop_productvariant_add")
-        query_string = urlencode({"product": str(obj.pk)})
+        base_url = reverse("admin:shop_productvariant_add")
 
-        return format_html(
-            '<a class="button" href="{}?{}">+ Add variant for this product</a>',
-            url,
-            query_string,
+        regular_url = f"{base_url}?" f"{urlencode({'product': str(obj.pk)})}"
+        modal_url = (
+            f"{base_url}?"
+            f"{urlencode({
+                'product': str(obj.pk),
+                '_modal': '1',
+            })}"
         )
 
-    add_variant_link.short_description = "Add variant"
+        return format_html(
+            '<a href="{}" '
+            'class="button js-related-object-modal" '
+            'data-modal-url="{}" '
+            'data-modal-title="Add product variant" '
+            'aria-haspopup="dialog">'
+            "+ Add variant for this product"
+            "</a>",
+            regular_url,
+            modal_url,
+        )
 
     def display_price_display(self, obj):
         return obj.display_price
@@ -245,8 +274,16 @@ class ProductAdmin(ModelAdmin):
 
 
 @admin.register(ProductVariant)
-class ProductVariantAdmin(ModelAdmin):
+class ProductVariantAdmin(
+    RelatedObjectModalAdminMixin,
+    ModelAdmin,
+):
     form = ProductVariantForm
+
+    warn_unsaved_form = True
+
+    class Media:
+        js = ("shop/admin/js/related_object_modal_child.js",)
 
     list_display = (
         "sku",
@@ -320,6 +357,62 @@ class ProductVariantAdmin(ModelAdmin):
             },
         ),
     )
+
+    def get_form(self, request, obj=None, change=False, **kwargs):
+        form_class = super().get_form(
+            request,
+            obj=obj,
+            change=change,
+            **kwargs,
+        )
+
+        if not self.is_related_modal_request(request):
+            return form_class
+
+        product_id = (
+            getattr(obj, "product_id", None)
+            or request.GET.get("product")
+            or request.POST.get("product")
+        )
+
+        if not product_id:
+            return form_class
+
+        class ModalProductVariantForm(form_class):
+            def __init__(self, *args, **form_kwargs):
+                initial = dict(form_kwargs.get("initial") or {})
+                initial.setdefault("product", product_id)
+                form_kwargs["initial"] = initial
+
+                super().__init__(*args, **form_kwargs)
+
+                product_field = self.fields.get("product")
+
+                if product_field is not None:
+                    product_field.queryset = product_field.queryset.filter(
+                        pk=product_id
+                    )
+                    product_field.disabled = True
+                    product_field.help_text = (
+                        "The product is fixed because this variant "
+                        "was opened from its product page."
+                    )
+
+        return ModalProductVariantForm
+
+    def get_related_modal_payload(self, obj, *, action):
+        payload = super().get_related_modal_payload(
+            obj,
+            action=action,
+        )
+        payload.update(
+            {
+                "productId": str(obj.product_id),
+                "sku": obj.sku or "",
+                "message": (f"Variant {obj.sku or obj.pk} saved successfully."),
+            }
+        )
+        return payload
 
     def get_queryset(self, request):
         return (
