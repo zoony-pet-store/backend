@@ -312,6 +312,7 @@ class ProductDetailSerializer(ProductCardSerializer):
     images = serializers.SerializerMethodField()
     reviews = serializers.SerializerMethodField()
     category = serializers.SerializerMethodField()
+    breadcrumbs = serializers.SerializerMethodField()
     content_blocks = serializers.SerializerMethodField()
     brand = BrandSerializer(read_only=True)
 
@@ -338,6 +339,7 @@ class ProductDetailSerializer(ProductCardSerializer):
             "description",
             "short_description",
             "category",
+            "breadcrumbs",
             "variants",
             "images",
             "reviews",
@@ -357,6 +359,46 @@ class ProductDetailSerializer(ProductCardSerializer):
                 "slug": obj.category.animal_type.slug,
             },
         }
+
+    def get_breadcrumbs(self, obj):
+        breadcrumbs = [
+            {
+                "type": "animal_type",
+                "id": str(obj.category.animal_type.id),
+                "name": translated_field(obj.category.animal_type, "name"),
+                "slug": obj.category.animal_type.slug,
+                "url": f"/categories/{obj.category.animal_type.slug}",
+            }
+        ]
+        category_path = []
+        current = obj.category
+
+        while current:
+            category_path.append(current)
+            current = current.parent
+
+        for category in reversed(category_path):
+            breadcrumbs.append(
+                {
+                    "type": "category",
+                    "id": str(category.id),
+                    "name": translated_field(category, "name"),
+                    "slug": category.slug,
+                    "url": None,
+                }
+            )
+
+        breadcrumbs.append(
+            {
+                "type": "product",
+                "id": str(obj.id),
+                "name": translated_field(obj, "name"),
+                "slug": str(obj.id),
+                "url": None,
+            }
+        )
+
+        return breadcrumbs
 
     def get_description(self, obj):
         return translated_field(obj, "description")
