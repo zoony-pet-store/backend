@@ -1,104 +1,205 @@
-# Online-pet-store
-<hr>
-Create an online store where you can choose a product, add it to the cart and place an order
-<hr>
-# backend
+# Online Pet Store
 
-<h2 style="font-size:20px;text-align:center;">Diagram</h2>
-<hr>
-<img src="Images/Diagram_online_pet_store.drawio.svg" alt = "Diagram"/>
+Backend for an online pet store where customers can browse products, select
+product variants, add items to a cart, and place orders.
 
-<hr>
-=======
-# backend
+## Technology Stack
 
+- **Python:** 3.11+
+- **Framework:** Django 5.2.3
+- **API:** Django REST Framework
+- **Database:** PostgreSQL
+- **Authentication:** JWT and Google OAuth2
+- **Admin panel:** Django Admin with Unfold
+- **Image storage:** Cloudinary
+- **Backend deployment:** Render
+- **Production database:** Supabase PostgreSQL
 
-## Getting started
+## Database Diagram
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+View the latest diagram in [docs/database-diagram.md](docs/database-diagram.md). Diagram is automatically generated
+from the Django model registry. The generator discovers local project models with
+Django introspection, maps model fields to Mermaid field types, and emits
+ForeignKey, OneToOneField, and ManyToManyField relationships in deterministic
+order.
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+Regenerate the diagram after adding or changing Django models:
 
-## Add your files
-
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
-
-```
-cd existing_repo
-git remote add origin https://gitlab.com/zoonypetstore/backend.git
-git branch -M main
-git push -uf origin main
+```bash
+python manage.py generate_diagram
 ```
 
-## Integrate with your tools
+Do not edit `docs/database-diagram.md` manually. New Django models appear in the
+diagram automatically after the command is run.
 
-- [ ] [Set up project integrations](https://gitlab.com/zoonypetstore/backend/-/settings/integrations)
+No `make diagram` shortcut was added because this repository does not currently
+include a Makefile, Justfile, Taskfile, or similar command runner.
 
-## Collaborate with your team
+## Local Development Setup
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+### 1. Clone the repository
 
-## Test and Deploy
+```bash
+git clone <repository-url>
+cd <backend-directory>
+```
 
-Use the built-in continuous integration in GitLab.
+Replace `<repository-url>` with the backend repository URL and
+`<backend-directory>` with the cloned folder name.
 
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
+### 2. Create a virtual environment
 
-***
+#### Windows PowerShell
 
-# Editing this README
+```powershell
+py -m venv .venv
+.venv\Scripts\Activate.ps1
+```
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+#### macOS / Linux
 
-## Suggestions for a good README
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+### 3. Install dependencies
 
-## Name
-Choose a self-explaining name for your project.
+```bash
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+```
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+### 4. Create the environment file
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+Copy `.env.example` to `.env`.
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+#### Windows PowerShell
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+```powershell
+Copy-Item .env.example .env
+```
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+#### macOS / Linux
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+```bash
+cp .env.example .env
+```
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+Update the local PostgreSQL credentials in `.env` when necessary.
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+Do not commit the `.env` file because it may contain private credentials.
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+### 5. Create a PostgreSQL database
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+Create a local PostgreSQL database named:
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+```text
+zoony
+```
 
-## License
-For open source projects, say how it is licensed.
+Using PostgreSQL CLI:
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+```bash
+psql -U postgres -c "CREATE DATABASE zoony;"
+```
+
+The database can also be created using pgAdmin.
+
+Make sure the following values in `.env` match your local PostgreSQL
+configuration:
+
+```dotenv
+DB_NAME=zoony
+DB_USER=postgres
+DB_PASSWORD=postgres
+DB_HOST=localhost
+DB_PORT=5432
+```
+
+### 6. Apply database migrations
+
+```bash
+python manage.py migrate
+```
+
+### 7. Create an admin user
+
+```bash
+python manage.py createsuperuser
+```
+
+### 8. Run the development server
+
+```bash
+python manage.py runserver
+```
+
+The backend will be available at:
+
+```text
+http://localhost:8000
+```
+
+## Local URLs
+
+- Django Admin: `http://localhost:8000/admin/`
+- Swagger API documentation: `http://localhost:8000/api/docs/`
+- Health check: `http://localhost:8000/health/`
+
+## Frontend Integration
+
+The local frontend is expected to run at:
+
+```text
+http://localhost:5173
+```
+
+Frontend environment variable:
+
+```dotenv
+VITE_API_URL=http://localhost:8000
+```
+
+The backend `.env` file should contain:
+
+```dotenv
+CORS_ALLOWED_ORIGINS=http://localhost:5173
+CSRF_TRUSTED_ORIGINS=http://localhost:5173
+```
+
+Use the exact API routes defined by the backend. The project has
+`APPEND_SLASH = False`, so routes with and without a trailing slash may be
+treated as different URLs.
+
+## Running Checks
+
+Run Django system checks:
+
+```bash
+python manage.py check
+```
+
+Run tests:
+
+```bash
+python manage.py test
+```
+
+## Development Workflow
+
+Create a separate branch for each change:
+
+```bash
+git checkout -b feature/short-task-name
+```
+
+After making changes:
+
+```bash
+git add .
+git commit -m "feat: describe the change"
+git push -u origin feature/short-task-name
+```
+
+Create a merge request and merge the branch after review.

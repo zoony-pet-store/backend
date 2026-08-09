@@ -1,0 +1,24 @@
+.media-asset-option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 44px;
+}
+
+.media-asset-option__image {
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+    object-fit: cover;
+    border-radius: 6px;
+}
+
+.media-asset-option__text {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.media-asset-option__text small {
+    opacity: 0.65;
+}

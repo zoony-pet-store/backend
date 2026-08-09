@@ -2,19 +2,67 @@ stages:
   - lint
   - test
 
-black:
-  stage: lint
-  image: python:3.11
+image: python:3.12-slim
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  PYTHONDONTWRITEBYTECODE: "1"
+  PYTHONUNBUFFERED: "1"
+
+cache:
+  key: "${CI_COMMIT_REF_SLUG}"
+  paths:
+    - .cache/pip/
+
+.python_job:
   before_script:
+    - apt-get update
+    - apt-get install -y --no-install-recommends
+      build-essential
+      libpq-dev
+      postgresql-client
+    - rm -rf /var/lib/apt/lists/*
+    - python -m pip install --upgrade pip
     - pip install -r requirements.txt
+
+lint:
+  extends: .python_job
+  stage: lint
   script:
     - black --check .
-  allow_failure: false
 
 test:
+  extends: .python_job
   stage: test
-  image: python:3.11
-  before_script:
-    - pip install -r requirements.txt
+
+  services:
+    - name: postgres:15
+      alias: postgres
+
+  variables:
+    # Тимчасова PostgreSQL база тільки для GitLab CI
+    POSTGRES_DB: zoony_test
+    POSTGRES_USER: zoony_test
+    POSTGRES_PASSWORD: ci_test_password
+
+    # Не дозволяємо CI випадково підключитися до production Supabase
+    DATABASE_URL: ""
+
+    # Django використає fallback DB_* із settings.py
+    DB_NAME: zoony_test
+    DB_USER: zoony_test
+    DB_PASSWORD: ci_test_password
+    DB_HOST: postgres
+    DB_PORT: "5432"
+    DB_SSL_MODE: disable
+
+    DJANGO_SECRET_KEY: ci-only-secret-key-not-for-production
+    DEBUG: "False"
+    ALLOWED_HOSTS: "localhost,127.0.0.1,testserver"
+
   script:
+    - until pg_isready -h postgres -p 5432 -U "$POSTGRES_USER"; do sleep 1; done
+    - python manage.py check
+    - python manage.py makemigrations --check --dry-run
+    - python manage.py migrate --noinput
     - pytest
