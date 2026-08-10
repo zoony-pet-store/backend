@@ -66,7 +66,49 @@ class CategoryAdmin(ModelAdmin):
     list_filter = ("is_active", "animal_type")
     search_fields = ("name", "slug", "parent__name", "animal_type__name")
     ordering = ("animal_type__name", "sort_order", "name")
+    readonly_fields = ("image_preview",)
     inlines = (CategoryTranslationInline,)
+
+    fieldsets = (
+        (
+            "Basic info",
+            {
+                "fields": (
+                    "name",
+                    "slug",
+                    "description",
+                    "is_active",
+                    "sort_order",
+                    "level",
+                )
+            },
+        ),
+        (
+            "Hierarchy",
+            {
+                "fields": (
+                    "animal_type",
+                    "parent",
+                    "cascade_animal_type_to_subtree",
+                )
+            },
+        ),
+        (
+            "Image",
+            {
+                "fields": (
+                    "image_preview",
+                    "image_asset",
+                    "upload_file",
+                    "image_url",
+                ),
+                "description": (
+                    "Choose an image from media library, upload a new image, "
+                    "or provide a direct image URL fallback."
+                ),
+            },
+        ),
+    )
 
     def get_queryset(self, request):
         return (
@@ -102,6 +144,11 @@ class CategoryAdmin(ModelAdmin):
         return obj._product_count
 
     product_count.short_description = "Active products"
+
+    def image_preview(self, obj):
+        return image_preview(obj.image_url, height=80)
+
+    image_preview.short_description = "Image preview"
 
 
 @admin.register(Brand)
