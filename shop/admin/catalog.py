@@ -5,7 +5,7 @@ from django.utils.html import format_html
 from unfold.admin import ModelAdmin
 
 from ..models import AnimalType, Badge, Brand, Category
-from .forms import CategoryForm, BrandForm
+from .forms import BadgeForm, BrandForm, CategoryForm
 from .helpers import image_preview
 from .translation_inlines import (
     AnimalTypeTranslationInline,
@@ -173,6 +173,7 @@ class BrandAdmin(ModelAdmin):
 
 @admin.register(Badge)
 class BadgeAdmin(ModelAdmin):
+    form = BadgeForm
     list_display = ("label", "slug", "is_active", "color_preview", "created_at")
     list_filter = ("is_active",)
     search_fields = ("name", "label", "slug")

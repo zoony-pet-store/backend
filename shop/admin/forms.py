@@ -1,9 +1,11 @@
+import re
 from decimal import Decimal, ROUND_HALF_UP
 
 from django import forms
 from django_jsonform.widgets import JSONFormWidget
 
 from ..models import (
+    Badge,
     Brand,
     Category,
     MediaAsset,
@@ -25,8 +27,11 @@ from .widgets import (
     AttributeSelectWidget,
     AttributeValueSelectWidget,
     CategoryTreeSelectWidget,
+    HexColorPickerWidget,
     MediaAssetSelectWidget,
 )
+
+HEX_COLOR_RE = re.compile(r"#?[0-9a-fA-F]{6}")
 
 
 class MediaAssetChoiceField(forms.ModelChoiceField):
@@ -136,6 +141,33 @@ class BrandForm(ImageUrlAdminFormMixin):
     class Meta:
         model = Brand
         fields = "__all__"
+
+
+class BadgeForm(forms.ModelForm):
+    class Meta:
+        model = Badge
+        fields = "__all__"
+        widgets = {
+            "color": HexColorPickerWidget(),
+            "background_color": HexColorPickerWidget(),
+        }
+
+    def clean_color(self):
+        return self.clean_hex_color("color")
+
+    def clean_background_color(self):
+        return self.clean_hex_color("background_color")
+
+    def clean_hex_color(self, field_name):
+        value = (self.cleaned_data.get(field_name) or "").strip()
+
+        if not HEX_COLOR_RE.fullmatch(value):
+            raise forms.ValidationError("Enter a valid HEX color, e.g. #A29696.")
+
+        if not value.startswith("#"):
+            value = f"#{value}"
+
+        return value.upper()
 
 
 class CategoryForm(forms.ModelForm):
