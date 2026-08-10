@@ -61,32 +61,42 @@ def get_descendant_category_ids(category: Category) -> list:
     return category_ids
 
 
+def get_category_tree_queryset(depth: int):
+    queryset = (
+        Category.objects.filter(is_active=True)
+        .order_by("sort_order", "name")
+        .prefetch_related("translations")
+    )
+
+    if depth <= 0:
+        return queryset
+
+    return queryset.prefetch_related(
+        Prefetch(
+            "children",
+            queryset=get_category_tree_queryset(depth - 1),
+            to_attr="prefetched_children",
+        )
+    )
+
+
 class AnimalTypeCategoriesView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def get(self, request, animal_type_slug):
+        max_depth = 2
+
+        root_categories_queryset = get_category_tree_queryset(max_depth).filter(
+            parent__isnull=True
+        )
+
         animal_type = get_object_or_404(
             AnimalType.objects.prefetch_related(
                 "translations",
                 Prefetch(
                     "categories",
-                    queryset=Category.objects.filter(is_active=True).prefetch_related(
-                        "translations",
-                        Prefetch(
-                            "children",
-                            queryset=Category.objects.filter(
-                                is_active=True
-                            ).prefetch_related(
-                                "translations",
-                                Prefetch(
-                                    "children",
-                                    queryset=Category.objects.filter(
-                                        is_active=True
-                                    ).prefetch_related("translations"),
-                                ),
-                            ),
-                        ),
-                    ),
+                    queryset=root_categories_queryset,
+                    to_attr="prefetched_root_categories",
                 ),
             ),
             slug=animal_type_slug,
@@ -95,7 +105,10 @@ class AnimalTypeCategoriesView(APIView):
 
         serializer = AnimalTypeWithCategoriesSerializer(
             animal_type,
-            context={"max_depth": 2},
+            context={
+                "request": request,
+                "max_depth": max_depth,
+            },
         )
 
         return Response(serializer.data)
@@ -117,9 +130,12 @@ class CategoryDetailView(APIView):
                 "parent__translations",
                 Prefetch(
                     "children",
-                    queryset=Category.objects.filter(is_active=True)
-                    .order_by("sort_order", "name")
-                    .prefetch_related("translations"),
+                    queryset=(
+                        Category.objects.filter(is_active=True)
+                        .order_by("sort_order", "name")
+                        .prefetch_related("translations")
+                    ),
+                    to_attr="prefetched_children",
                 ),
             ),
             pk=category.pk,
