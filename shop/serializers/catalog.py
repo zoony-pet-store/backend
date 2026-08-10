@@ -1,4 +1,3 @@
-from django.db.models import Prefetch
 from rest_framework import serializers
 
 from ..models import AnimalType, Brand, Category, translated_field
@@ -130,35 +129,39 @@ class CategoryTreeSerializer(CategorySerializer):
     subcategories = serializers.SerializerMethodField()
 
     class Meta(CategorySerializer.Meta):
-        fields = ["name", "slug", "image_url", "subcategories"]
+        fields = [
+            "name",
+            "slug",
+            "image_url",
+            "subcategories",
+        ]
 
     def get_subcategories(self, obj):
-        if hasattr(obj, "prefetched_children"):
-            children = obj.prefetched_children
-        elif hasattr(obj, "children"):
-            children = obj.children.filter(is_active=True)
-        else:
-            children = Category.objects.filter(parent=obj, is_active=True)
-
-        max_depth = self.context.get("max_depth", 3)
+        max_depth = self.context.get("max_depth", 2)
         current_depth = self.context.get("current_depth", 0)
 
         if current_depth >= max_depth:
             return []
 
-        child_context = self.context.copy()
-        child_context["current_depth"] = current_depth + 1
+        children = getattr(
+            obj,
+            "prefetched_children",
+            [],
+        )
 
         return CategoryTreeSerializer(
             children,
             many=True,
-            context=child_context,
+            context={
+                **self.context,
+                "current_depth": current_depth + 1,
+            },
         ).data
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)
 
-        if instance.parent is None:
+        if instance.parent_id is None:
             representation.pop("image_url", None)
 
         return representation
@@ -168,11 +171,25 @@ class CategoryWithChildrenSerializer(CategorySerializer):
     subcategories = serializers.SerializerMethodField()
 
     class Meta(CategorySerializer.Meta):
-        fields = ["name", "slug", "image_url", "subcategories"]
+        fields = [
+            "name",
+            "slug",
+            "image_url",
+            "subcategories",
+        ]
 
     def get_subcategories(self, obj):
-        children = obj.children.filter(is_active=True)
-        return CategorySerializer(children, many=True).data
+        children = getattr(
+            obj,
+            "prefetched_children",
+            [],
+        )
+
+        return CategorySerializer(
+            children,
+            many=True,
+            context=self.context,
+        ).data
 
 
 class AnimalTypeWithCategoriesSerializer(serializers.ModelSerializer):
@@ -182,37 +199,31 @@ class AnimalTypeWithCategoriesSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = AnimalType
-        fields = ["name", "slug", "icon", "image_url", "categories"]
+        fields = [
+            "name",
+            "slug",
+            "icon",
+            "image_url",
+            "categories",
+        ]
 
     def get_name(self, obj):
         return translated_field(obj, "name")
 
     def get_categories(self, obj):
-        root_categories = obj.categories.filter(
-            parent__isnull=True,
-            is_active=True,
-        ).prefetch_related(
-            "translations",
-            Prefetch(
-                "children",
-                queryset=Category.objects.filter(is_active=True).prefetch_related(
-                    "translations",
-                    Prefetch(
-                        "children",
-                        queryset=Category.objects.filter(
-                            is_active=True
-                        ).prefetch_related("translations"),
-                    ),
-                ),
-            ),
+        root_categories = getattr(
+            obj,
+            "prefetched_root_categories",
+            [],
         )
-
-        max_depth = self.context.get("max_depth", 2)
 
         return CategoryTreeSerializer(
             root_categories,
             many=True,
-            context={"max_depth": max_depth, "current_depth": 0},
+            context={
+                **self.context,
+                "current_depth": 0,
+            },
         ).data
 
 
