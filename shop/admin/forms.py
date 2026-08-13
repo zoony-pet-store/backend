@@ -138,7 +138,10 @@ class BrandForm(ImageUrlAdminFormMixin):
         fields = "__all__"
 
 
-class CategoryForm(forms.ModelForm):
+class CategoryForm(ImageUrlAdminFormMixin):
+    image_url_field_name = "image_url"
+    image_alt_text_source_field = "name"
+
     cascade_animal_type_to_subtree = forms.BooleanField(
         required=False,
         label="Move whole subtree to this animal type",
