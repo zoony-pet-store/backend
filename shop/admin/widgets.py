@@ -1,6 +1,64 @@
+import re
+
 from django import forms
 from django.utils.html import format_html, json_script
 from unfold.widgets import UnfoldAdminSelect2Widget
+
+HEX_COLOR_RE = re.compile(r"#[0-9a-fA-F]{6}")
+
+
+class ColorInput(forms.TextInput):
+    input_type = "color"
+
+
+class HexColorPickerWidget(forms.TextInput):
+    class Media:
+        js = ("shop/admin/js/badge_color_picker.js",)
+        css = {
+            "all": ("shop/admin/css/badge_color_picker.css",),
+        }
+
+    def __init__(self, attrs=None):
+        attrs = attrs or {}
+        current_classes = attrs.get("class", "")
+        attrs["class"] = f"{current_classes} hex-color-picker__text".strip()
+        attrs.setdefault("maxlength", "7")
+        attrs.setdefault("pattern", "#?[0-9A-Fa-f]{6}")
+        attrs.setdefault("placeholder", "#000000")
+        super().__init__(attrs=attrs)
+
+    def render(self, name, value, attrs=None, renderer=None):
+        attrs = attrs or {}
+        input_id = attrs.get("id") or self.attrs.get("id") or f"id_{name}"
+        text_attrs = {
+            **attrs,
+            "id": input_id,
+            "data-hex-color-text": "",
+        }
+        picker_value = self.get_picker_value(value)
+        text_input = super().render(name, value, text_attrs, renderer)
+        picker_input = ColorInput(
+            attrs={
+                "id": f"{input_id}_picker",
+                "class": "hex-color-picker__picker",
+                "data-hex-color-picker": "",
+                "aria-label": "Choose color",
+            }
+        ).render(f"{name}_picker", picker_value, renderer=renderer)
+
+        return format_html(
+            '<div class="hex-color-picker">{}{}</div>',
+            picker_input,
+            text_input,
+        )
+
+    def get_picker_value(self, value):
+        value = str(value or "").strip()
+
+        if HEX_COLOR_RE.fullmatch(value):
+            return value
+
+        return "#000000"
 
 
 class AttributeSelectWidget(forms.Select):
