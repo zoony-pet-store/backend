@@ -1,89 +1,90 @@
 from django.core.management.base import BaseCommand
+from django.db import transaction
 from django.utils.text import slugify
 
 from shop.models import (
     AnimalType,
+    AnimalTypeTranslation,
     Badge,
+    BadgeTranslation,
     Brand,
     Category,
+    CategoryTranslation,
     ProductAttribute,
+    ProductAttributeTranslation,
     ProductAttributeValue,
+    ProductAttributeValueTranslation,
 )
+
+
+ENGLISH_LANGUAGE = "en"
 
 
 SELECT_ATTRIBUTES = [
     {
-        "name": "Size",
+        "name": "Розмір",
+        "name_en": "Size",
         "slug": "size",
         "values": [
-            "Small",
-            "Medium",
-            "Large",
-            "X-Large",
-            "1.5kg",
-            "2kg",
-            "3kg",
-            "4kg",
-            "5kg",
-            "7kg",
-            "8kg",
-            "10kg",
-            "15kg",
-            "16kg",
-            "12-pack",
-            "24-pack",
-            "48-pack",
+            {"value": "Малий", "value_en": "Small"},
+            {"value": "Середній", "value_en": "Medium"},
+            {"value": "Великий", "value_en": "Large"},
+            {"value": "Дуже великий", "value_en": "X-Large"},
         ],
     },
     {
-        "name": "Flavor",
+        "name": "Смак",
+        "name_en": "Flavor",
         "slug": "flavor",
         "values": [
-            "Chicken",
-            "Beef",
-            "Fish",
-            "Lamb",
-            "Turkey",
-            "Salmon",
-            "Duck",
-            "Assorted",
+            {"value": "Курка", "value_en": "Chicken"},
+            {"value": "Яловичина", "value_en": "Beef"},
+            {"value": "Риба", "value_en": "Fish"},
+            {"value": "Ягнятина", "value_en": "Lamb"},
+            {"value": "Індичка", "value_en": "Turkey"},
+            {"value": "Лосось", "value_en": "Salmon"},
+            {"value": "Качка", "value_en": "Duck"},
+            {"value": "Асорті", "value_en": "Assorted"},
         ],
     },
     {
-        "name": "Age",
+        "name": "Вік",
+        "name_en": "Age",
         "slug": "age",
         "values": [
-            "Puppy/Kitten",
-            "Adult",
-            "Senior",
-            "All Life Stages",
+            {"value": "Цуценя / кошеня", "value_en": "Puppy/Kitten"},
+            {"value": "Дорослий", "value_en": "Adult"},
+            {"value": "Літній", "value_en": "Senior"},
+            {"value": "Усі вікові групи", "value_en": "All Life Stages"},
         ],
     },
     {
-        "name": "Color",
+        "name": "Колір",
+        "name_en": "Color",
         "slug": "color",
         "values": [
-            "Red",
-            "Blue",
-            "Green",
-            "Black",
-            "Brown",
-            "Gray",
-            "Multicolor",
-            "White",
+            {"value": "Червоний", "value_en": "Red"},
+            {"value": "Синій", "value_en": "Blue"},
+            {"value": "Зелений", "value_en": "Green"},
+            {"value": "Чорний", "value_en": "Black"},
+            {"value": "Коричневий", "value_en": "Brown"},
+            {"value": "Сірий", "value_en": "Gray"},
+            {"value": "Різнокольоровий", "value_en": "Multicolor"},
+            {"value": "Білий", "value_en": "White"},
         ],
     },
     {
-        "name": "Material",
+        "name": "Матеріал",
+        "name_en": "Material",
         "slug": "material",
         "values": [
-            "Plastic",
-            "Rubber",
-            "Fabric",
-            "Metal",
-            "Wood",
-            "Silicone",
-            "Clay",
+            {"value": "Пластик", "value_en": "Plastic"},
+            {"value": "Гума", "value_en": "Rubber"},
+            {"value": "Тканина", "value_en": "Fabric"},
+            {"value": "Метал", "value_en": "Metal"},
+            {"value": "Дерево", "value_en": "Wood"},
+            {"value": "Силікон", "value_en": "Silicone"},
+            {"value": "Глина", "value_en": "Clay"},
         ],
     },
 ]
@@ -91,17 +92,20 @@ SELECT_ATTRIBUTES = [
 
 NUMERIC_ATTRIBUTES = [
     {
-        "name": "Weight",
+        "name": "Вага",
+        "name_en": "Weight",
         "slug": "weight",
         "available_units": ["g", "kg"],
     },
     {
-        "name": "Volume",
+        "name": "Обʼєм",
+        "name_en": "Volume",
         "slug": "volume",
         "available_units": ["ml", "l"],
     },
     {
-        "name": "Pack count",
+        "name": "Кількість в упаковці",
+        "name_en": "Pack count",
         "slug": "pack-count",
         "available_units": ["pcs", "pack"],
     },
@@ -112,28 +116,32 @@ BADGES = [
     {
         "name": "new",
         "slug": "new",
-        "label": "New",
+        "label": "Новинка",
+        "label_en": "New",
         "color": "#FFFFFF",
         "background_color": "#198754",
     },
     {
         "name": "bestseller",
         "slug": "bestseller",
-        "label": "Bestseller",
+        "label": "Хіт продажів",
+        "label_en": "Bestseller",
         "color": "#FFFFFF",
         "background_color": "#FFC107",
     },
     {
         "name": "trending",
         "slug": "trending",
-        "label": "Trending",
+        "label": "Популярне",
+        "label_en": "Trending",
         "color": "#FFFFFF",
         "background_color": "#0D6EFD",
     },
     {
         "name": "recommended",
         "slug": "recommended",
-        "label": "Recommended",
+        "label": "Рекомендуємо",
+        "label_en": "Recommended",
         "color": "#FFFFFF",
         "background_color": "#6F42C1",
     },
@@ -186,32 +194,38 @@ BRANDS = [
 
 DOG_CATEGORIES = [
     {
-        "name": "Food",
+        "name": "Харчування",
+        "name_en": "Food",
         "slug": "food",
-        "description": "Dog food and treats",
+        "description": "Корм та ласощі для собак",
+        "description_en": "Dog food and treats",
         "image_url": "https://images.unsplash.com/photo-1565708097881-bbf4ecf47cc1?w=600&h=400&fit=crop",
         "sort_order": 1,
         "children": [
             {
-                "name": "Dry Food",
+                "name": "Сухий корм",
+                "name_en": "Dry Food",
                 "slug": "dry-food",
                 "sort_order": 1,
                 "image_url": "https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=400&h=300&fit=crop",
             },
             {
-                "name": "Wet Food",
+                "name": "Вологий корм",
+                "name_en": "Wet Food",
                 "slug": "wet-food",
                 "sort_order": 2,
                 "image_url": "https://images.unsplash.com/photo-1623387641168-d9803ddd3f35?w=400&h=300&fit=crop",
             },
             {
-                "name": "Medical Food",
+                "name": "Лікувальний корм",
+                "name_en": "Medical Food",
                 "slug": "medical-food",
                 "sort_order": 3,
                 "image_url": "https://images.unsplash.com/photo-1576201836106-db1758fd1c97?w=400&h=300&fit=crop",
             },
             {
-                "name": "Treats",
+                "name": "Ласощі",
+                "name_en": "Treats",
                 "slug": "treats",
                 "sort_order": 4,
                 "image_url": "https://images.unsplash.com/photo-1541364983171-a8ba01e95cfc?w=400&h=300&fit=crop",
@@ -219,26 +233,31 @@ DOG_CATEGORIES = [
         ],
     },
     {
-        "name": "Care & Hygiene",
+        "name": "Догляд та гігієна",
+        "name_en": "Care & Hygiene",
         "slug": "care-hygiene",
-        "description": "Dog care products",
+        "description": "Засоби для догляду за собаками",
+        "description_en": "Dog care products",
         "image_url": "https://images.unsplash.com/photo-1509205477838-a534e43a849f?w=600&h=400&fit=crop",
         "sort_order": 2,
         "children": [
             {
-                "name": "Care Products",
+                "name": "Засоби для догляду",
+                "name_en": "Care Products",
                 "slug": "care-products",
                 "sort_order": 1,
                 "image_url": "https://images.unsplash.com/photo-1591946614720-90a587da4a36?w=400&h=300&fit=crop",
             },
             {
-                "name": "Shampoos",
+                "name": "Шампуні",
+                "name_en": "Shampoos",
                 "slug": "shampoos",
                 "sort_order": 2,
                 "image_url": "https://images.unsplash.com/photo-1548192746-dd526f154ed9?w=400&h=300&fit=crop",
             },
             {
-                "name": "Brushes & Combs",
+                "name": "Щітки та гребінці",
+                "name_en": "Brushes & Combs",
                 "slug": "brushes-combs",
                 "sort_order": 3,
                 "image_url": "https://images.unsplash.com/photo-1564561998327-db0cce0c4c5f?w=400&h=300&fit=crop",
@@ -246,26 +265,31 @@ DOG_CATEGORIES = [
         ],
     },
     {
-        "name": "Veterinary Pharmacy",
+        "name": "Ветеринарна аптека",
+        "name_en": "Veterinary Pharmacy",
         "slug": "veterinary-pharmacy",
-        "description": "Medicines and vitamins for dogs",
+        "description": "Ліки та вітаміни для собак",
+        "description_en": "Medicines and vitamins for dogs",
         "image_url": "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=600&h=400&fit=crop",
         "sort_order": 3,
         "children": [
             {
-                "name": "Vitamins",
+                "name": "Вітаміни",
+                "name_en": "Vitamins",
                 "slug": "vitamins",
                 "sort_order": 1,
                 "image_url": "https://images.unsplash.com/photo-1559757148-5c350d0d3c56?w=400&h=300&fit=crop",
             },
             {
-                "name": "Medicines",
+                "name": "Лікарські засоби",
+                "name_en": "Medicines",
                 "slug": "medicines",
                 "sort_order": 2,
                 "image_url": "https://images.unsplash.com/photo-1559757175-0eb30cd8c063?w=400&h=300&fit=crop",
             },
             {
-                "name": "Prevention",
+                "name": "Профілактика",
+                "name_en": "Prevention",
                 "slug": "prevention",
                 "sort_order": 3,
                 "image_url": "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&h=300&fit=crop",
@@ -273,25 +297,29 @@ DOG_CATEGORIES = [
         ],
     },
     {
-        "name": "Walks & Travel",
+        "name": "Прогулянки та подорожі",
+        "name_en": "Walks & Travel",
         "slug": "walks-travel",
         "image_url": "https://images.unsplash.com/photo-1535930749574-1399327ce78f?w=600&h=400&fit=crop",
         "sort_order": 4,
         "children": [
             {
-                "name": "Leashes",
+                "name": "Повідці",
+                "name_en": "Leashes",
                 "slug": "leashes",
                 "sort_order": 1,
                 "image_url": "https://images.unsplash.com/photo-1551326844-4df70f78d0e9?w=400&h=300&fit=crop",
             },
             {
-                "name": "Collars",
+                "name": "Нашийники",
+                "name_en": "Collars",
                 "slug": "collars",
                 "sort_order": 2,
                 "image_url": "https://images.unsplash.com/photo-1598134700628-d2de1b9d0b4a?w=400&h=300&fit=crop",
             },
             {
-                "name": "Carriers",
+                "name": "Переноски",
+                "name_en": "Carriers",
                 "slug": "carriers",
                 "sort_order": 3,
                 "image_url": "https://images.unsplash.com/photo-1596273315327-5f059a2e52c9?w=400&h=300&fit=crop",
@@ -299,19 +327,22 @@ DOG_CATEGORIES = [
         ],
     },
     {
-        "name": "Sets & Gifts",
+        "name": "Набори та подарунки",
+        "name_en": "Sets & Gifts",
         "slug": "sets-gifts",
         "image_url": "https://images.unsplash.com/photo-1591946653358-5a2e7156cde3?w=600&h=400&fit=crop",
         "sort_order": 5,
         "children": [
             {
-                "name": "Gift Sets",
+                "name": "Подарункові набори",
+                "name_en": "Gift Sets",
                 "slug": "gift-sets",
                 "sort_order": 1,
                 "image_url": "https://images.unsplash.com/photo-1559056199-5c0a5b5c5c5a?w=400&h=300&fit=crop",
             },
             {
-                "name": "Toys",
+                "name": "Іграшки",
+                "name_en": "Toys",
                 "slug": "toys",
                 "sort_order": 2,
                 "image_url": "https://images.unsplash.com/photo-1548192746-dd526f154ed9?w=400&h=300&fit=crop",
@@ -319,25 +350,29 @@ DOG_CATEGORIES = [
         ],
     },
     {
-        "name": "Home Comfort",
+        "name": "Домашній комфорт",
+        "name_en": "Home Comfort",
         "slug": "home-comfort",
         "image_url": "https://images.unsplash.com/photo-1559715541-5d0a4e8c7c6e?w=600&h=400&fit=crop",
         "sort_order": 6,
         "children": [
             {
-                "name": "Beds",
+                "name": "Лежанки",
+                "name_en": "Beds",
                 "slug": "beds",
                 "sort_order": 1,
                 "image_url": "https://images.unsplash.com/photo-1561037404-61cd46aa615b?w=400&h=300&fit=crop",
             },
             {
-                "name": "Bowls",
+                "name": "Миски",
+                "name_en": "Bowls",
                 "slug": "bowls",
                 "sort_order": 2,
                 "image_url": "https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=400&h=300&fit=crop",
             },
             {
-                "name": "Houses",
+                "name": "Будиночки",
+                "name_en": "Houses",
                 "slug": "houses",
                 "sort_order": 3,
                 "image_url": "https://images.unsplash.com/photo-1561037404-61cd46aa615b?w=400&h=300&fit=crop",
@@ -349,26 +384,31 @@ DOG_CATEGORIES = [
 
 CAT_CATEGORIES = [
     {
-        "name": "Food",
+        "name": "Харчування",
+        "name_en": "Food",
         "slug": "food",
-        "description": "Cat food and treats",
+        "description": "Корм та ласощі для котів",
+        "description_en": "Cat food and treats",
         "image_url": "https://images.unsplash.com/photo-1574231164645-d6f0e8553590?w=600&h=400&fit=crop",
         "sort_order": 1,
         "children": [
             {
-                "name": "Dry Food",
+                "name": "Сухий корм",
+                "name_en": "Dry Food",
                 "slug": "dry-food",
                 "sort_order": 1,
                 "image_url": "https://images.unsplash.com/photo-1608848461950-0fe51dfc41cb?w=400&h=300&fit=crop",
             },
             {
-                "name": "Wet Food",
+                "name": "Вологий корм",
+                "name_en": "Wet Food",
                 "slug": "wet-food",
                 "sort_order": 2,
                 "image_url": "https://images.unsplash.com/photo-1576675466969-38eeae4b41f6?w=400&h=300&fit=crop",
             },
             {
-                "name": "Treats",
+                "name": "Ласощі",
+                "name_en": "Treats",
                 "slug": "treats",
                 "sort_order": 3,
                 "image_url": "https://images.unsplash.com/photo-1591946653358-5a2e7156cde3?w=400&h=300&fit=crop",
@@ -376,26 +416,31 @@ CAT_CATEGORIES = [
         ],
     },
     {
-        "name": "Care & Hygiene",
+        "name": "Догляд та гігієна",
+        "name_en": "Care & Hygiene",
         "slug": "care-hygiene",
-        "description": "Cat care products",
+        "description": "Засоби для догляду за котами",
+        "description_en": "Cat care products",
         "image_url": "https://images.unsplash.com/photo-1591946625865-df6dbb0e2db0?w=600&h=400&fit=crop",
         "sort_order": 2,
         "children": [
             {
-                "name": "Care Products",
+                "name": "Засоби для догляду",
+                "name_en": "Care Products",
                 "slug": "care-products",
                 "sort_order": 1,
                 "image_url": "https://images.unsplash.com/photo-1591946614720-90a587da4a36?w=400&h=300&fit=crop",
             },
             {
-                "name": "Shampoos",
+                "name": "Шампуні",
+                "name_en": "Shampoos",
                 "slug": "shampoos",
                 "sort_order": 2,
                 "image_url": "https://images.unsplash.com/photo-1548192746-dd526f154ed9?w=400&h=300&fit=crop",
             },
             {
-                "name": "Litter & Trays",
+                "name": "Наповнювачі та лотки",
+                "name_en": "Litter & Trays",
                 "slug": "litter-trays",
                 "sort_order": 3,
                 "image_url": "https://images.unsplash.com/photo-1591946614720-90a587da4a36?w=400&h=300&fit=crop",
@@ -403,26 +448,31 @@ CAT_CATEGORIES = [
         ],
     },
     {
-        "name": "Veterinary Pharmacy",
+        "name": "Ветеринарна аптека",
+        "name_en": "Veterinary Pharmacy",
         "slug": "veterinary-pharmacy",
-        "description": "Medicines and vitamins for cats",
+        "description": "Ліки та вітаміни для котів",
+        "description_en": "Medicines and vitamins for cats",
         "image_url": "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=600&h=400&fit=crop",
         "sort_order": 3,
         "children": [
             {
-                "name": "Vitamins",
+                "name": "Вітаміни",
+                "name_en": "Vitamins",
                 "slug": "vitamins",
                 "sort_order": 1,
                 "image_url": "https://images.unsplash.com/photo-1559757148-5c350d0d3c56?w=400&h=300&fit=crop",
             },
             {
-                "name": "Medicines",
+                "name": "Лікарські засоби",
+                "name_en": "Medicines",
                 "slug": "medicines",
                 "sort_order": 2,
                 "image_url": "https://images.unsplash.com/photo-1559757175-0eb30cd8c063?w=400&h=300&fit=crop",
             },
             {
-                "name": "Prevention",
+                "name": "Профілактика",
+                "name_en": "Prevention",
                 "slug": "prevention",
                 "sort_order": 3,
                 "image_url": "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&h=300&fit=crop",
@@ -430,19 +480,22 @@ CAT_CATEGORIES = [
         ],
     },
     {
-        "name": "Walks & Travel",
+        "name": "Прогулянки та подорожі",
+        "name_en": "Walks & Travel",
         "slug": "walks-travel",
         "image_url": "https://images.unsplash.com/photo-1535930749574-1399327ce78f?w=600&h=400&fit=crop",
         "sort_order": 4,
         "children": [
             {
-                "name": "Carriers",
+                "name": "Переноски",
+                "name_en": "Carriers",
                 "slug": "carriers",
                 "sort_order": 1,
                 "image_url": "https://images.unsplash.com/photo-1596273315327-5f059a2e52c9?w=400&h=300&fit=crop",
             },
             {
-                "name": "Travel Accessories",
+                "name": "Аксесуари для подорожей",
+                "name_en": "Travel Accessories",
                 "slug": "travel-accessories",
                 "sort_order": 2,
                 "image_url": "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&h=300&fit=crop",
@@ -450,19 +503,22 @@ CAT_CATEGORIES = [
         ],
     },
     {
-        "name": "Sets & Gifts",
+        "name": "Набори та подарунки",
+        "name_en": "Sets & Gifts",
         "slug": "sets-gifts",
         "image_url": "https://images.unsplash.com/photo-1591946653358-5a2e7156cde3?w=600&h=400&fit=crop",
         "sort_order": 5,
         "children": [
             {
-                "name": "Gift Sets",
+                "name": "Подарункові набори",
+                "name_en": "Gift Sets",
                 "slug": "gift-sets",
                 "sort_order": 1,
                 "image_url": "https://images.unsplash.com/photo-1559056199-5c0a5b5c5c5a?w=400&h=300&fit=crop",
             },
             {
-                "name": "Toys",
+                "name": "Іграшки",
+                "name_en": "Toys",
                 "slug": "toys",
                 "sort_order": 2,
                 "image_url": "https://images.unsplash.com/photo-1548192746-dd526f154ed9?w=400&h=300&fit=crop",
@@ -470,31 +526,36 @@ CAT_CATEGORIES = [
         ],
     },
     {
-        "name": "Home Comfort",
+        "name": "Домашній комфорт",
+        "name_en": "Home Comfort",
         "slug": "home-comfort",
         "image_url": "https://images.unsplash.com/photo-1559715541-5d0a4e8c7c6e?w=600&h=400&fit=crop",
         "sort_order": 6,
         "children": [
             {
-                "name": "Beds",
+                "name": "Лежанки",
+                "name_en": "Beds",
                 "slug": "beds",
                 "sort_order": 1,
                 "image_url": "https://images.unsplash.com/photo-1561037404-61cd46aa615b?w=400&h=300&fit=crop",
             },
             {
-                "name": "Bowls",
+                "name": "Миски",
+                "name_en": "Bowls",
                 "slug": "bowls",
                 "sort_order": 2,
                 "image_url": "https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=400&h=300&fit=crop",
             },
             {
-                "name": "Houses",
+                "name": "Будиночки",
+                "name_en": "Houses",
                 "slug": "houses",
                 "sort_order": 3,
                 "image_url": "https://images.unsplash.com/photo-1561037404-61cd46aa615b?w=400&h=300&fit=crop",
             },
             {
-                "name": "Scratching Posts",
+                "name": "Дряпки",
+                "name_en": "Scratching Posts",
                 "slug": "scratching-posts",
                 "sort_order": 4,
                 "image_url": "https://images.unsplash.com/photo-1561037404-61cd46aa615b?w=400&h=300&fit=crop",
@@ -505,13 +566,15 @@ CAT_CATEGORIES = [
 
 
 class Command(BaseCommand):
-    help = "Load base catalog data: animal types, categories, brands, badges, and attributes"
+    help = (
+        "Load base catalog data with Ukrainian base content " "and English translations"
+    )
 
     def add_arguments(self, parser):
         parser.add_argument(
             "--skip-if-exists",
             action="store_true",
-            help="Skip if base catalog data already exists",
+            help="Skip if localized base catalog data already exists",
         )
 
     def handle(self, *args, **options):
@@ -519,29 +582,40 @@ class Command(BaseCommand):
             self.stdout.write("✅ Base catalog data already exists, skipping...")
             return
 
-        self.stdout.write("🚀 Starting to load base catalog data...")
+        self.stdout.write("🚀 Starting to load localized base catalog data...")
 
-        dog_type, _ = self.create_or_update_animal_type(
-            name="Dogs",
-            slug="dogs",
-            icon="🐕",
-        )
-        cat_type, _ = self.create_or_update_animal_type(
-            name="Cats",
-            slug="cats",
-            icon="🐈",
-        )
+        with transaction.atomic():
+            dog_type, _ = self.create_or_update_animal_type(
+                name="Собаки",
+                name_en="Dogs",
+                slug="dogs",
+                icon="🐕",
+            )
+            cat_type, _ = self.create_or_update_animal_type(
+                name="Коти",
+                name_en="Cats",
+                slug="cats",
+                icon="🐈",
+            )
 
-        dog_count = self.create_categories(dog_type, DOG_CATEGORIES, "dogs")
-        cat_count = self.create_categories(cat_type, CAT_CATEGORIES, "cats")
-        brand_count = self.create_brands()
-        badge_count = self.create_badges()
-        select_attribute_count = self.create_select_attributes()
-        numeric_attribute_count = self.create_numeric_attributes()
+            dog_count = self.create_categories(
+                dog_type,
+                DOG_CATEGORIES,
+                "dogs",
+            )
+            cat_count = self.create_categories(
+                cat_type,
+                CAT_CATEGORIES,
+                "cats",
+            )
+            brand_count = self.create_brands()
+            badge_count = self.create_badges()
+            select_attribute_count = self.create_select_attributes()
+            numeric_attribute_count = self.create_numeric_attributes()
 
         self.stdout.write("")
         self.stdout.write(
-            self.style.SUCCESS("🎉 Base catalog data loaded successfully")
+            self.style.SUCCESS("🎉 Localized base catalog data loaded successfully")
         )
         self.stdout.write(f"Animal types: {AnimalType.objects.count()}")
         self.stdout.write(f"Dog categories touched: {dog_count}")
@@ -554,18 +628,37 @@ class Command(BaseCommand):
         self.stdout.write("")
         self.stdout.write("Next step:")
         self.stdout.write(
-            "python manage.py import_mockaroo_products --file MOCK_DATA.csv --replace"
+            "python manage.py import_mockaroo_products "
+            "--file MOCK_DATA.csv --replace"
         )
 
     def base_data_exists(self):
         return (
-            AnimalType.objects.filter(slug__in=["dogs", "cats"]).count() == 2
+            AnimalType.objects.filter(
+                slug__in=["dogs", "cats"],
+            ).count()
+            == 2
             and Brand.objects.exists()
             and Category.objects.exists()
             and ProductAttribute.objects.exists()
+            and AnimalTypeTranslation.objects.filter(language=ENGLISH_LANGUAGE).exists()
+            and CategoryTranslation.objects.filter(language=ENGLISH_LANGUAGE).exists()
+            and BadgeTranslation.objects.filter(language=ENGLISH_LANGUAGE).exists()
+            and ProductAttributeTranslation.objects.filter(
+                language=ENGLISH_LANGUAGE
+            ).exists()
+            and ProductAttributeValueTranslation.objects.filter(
+                language=ENGLISH_LANGUAGE
+            ).exists()
         )
 
-    def create_or_update_animal_type(self, name, slug, icon):
+    def create_or_update_animal_type(
+        self,
+        name,
+        name_en,
+        slug,
+        icon,
+    ):
         animal_type, created = AnimalType.objects.get_or_create(
             slug=slug,
             defaults={
@@ -592,12 +685,25 @@ class Command(BaseCommand):
         if update_fields:
             animal_type.save(update_fields=update_fields)
 
+        AnimalTypeTranslation.objects.update_or_create(
+            animal_type=animal_type,
+            language=ENGLISH_LANGUAGE,
+            defaults={
+                "name": name_en,
+            },
+        )
+
         action = "Created" if created else "Updated"
         self.stdout.write(f"✅ {action} animal type: {animal_type.name}")
 
         return animal_type, created
 
-    def create_categories(self, animal_type, categories_data, animal_name):
+    def create_categories(
+        self,
+        animal_type,
+        categories_data,
+        animal_name,
+    ):
         touched_count = 0
 
         for category_data in categories_data:
@@ -607,19 +713,32 @@ class Command(BaseCommand):
                 parent=None,
                 defaults={
                     "name": category_data["name"],
-                    "description": category_data.get("description", ""),
-                    "image_url": category_data.get("image_url", ""),
+                    "description": category_data.get(
+                        "description",
+                        "",
+                    ),
+                    "image_url": category_data.get(
+                        "image_url",
+                        "",
+                    ),
                     "sort_order": category_data["sort_order"],
                     "is_active": True,
                 },
             )
 
-            self.update_category(parent, category_data)
+            self.update_category(
+                parent,
+                category_data,
+            )
+            self.update_category_translation(
+                parent,
+                category_data,
+            )
             touched_count += 1
 
             if parent_created:
                 self.stdout.write(
-                    f"   ✅ Created {animal_name} category: {parent.name}"
+                    f"   ✅ Created {animal_name} category: " f"{parent.name}"
                 )
 
             for child_data in category_data.get("children", []):
@@ -629,24 +748,41 @@ class Command(BaseCommand):
                     animal_type=animal_type,
                     defaults={
                         "name": child_data["name"],
-                        "description": child_data.get("description", ""),
-                        "image_url": child_data.get("image_url", ""),
+                        "description": child_data.get(
+                            "description",
+                            "",
+                        ),
+                        "image_url": child_data.get(
+                            "image_url",
+                            "",
+                        ),
                         "sort_order": child_data["sort_order"],
                         "is_active": True,
                     },
                 )
 
-                self.update_category(child, child_data)
+                self.update_category(
+                    child,
+                    child_data,
+                )
+                self.update_category_translation(
+                    child,
+                    child_data,
+                )
                 touched_count += 1
 
                 if child_created:
                     self.stdout.write(
-                        f"      ✅ Created {animal_name} subcategory: {child.name}"
+                        f"      ✅ Created {animal_name} subcategory: " f"{child.name}"
                     )
 
         return touched_count
 
-    def update_category(self, category, category_data):
+    def update_category(
+        self,
+        category,
+        category_data,
+    ):
         update_fields = []
 
         for field_name in [
@@ -658,7 +794,11 @@ class Command(BaseCommand):
             new_value = category_data.get(field_name)
 
             if new_value is not None and getattr(category, field_name) != new_value:
-                setattr(category, field_name, new_value)
+                setattr(
+                    category,
+                    field_name,
+                    new_value,
+                )
                 update_fields.append(field_name)
 
         if not category.is_active:
@@ -666,7 +806,26 @@ class Command(BaseCommand):
             update_fields.append("is_active")
 
         if update_fields:
-            category.save(update_fields=update_fields)
+            category.save(
+                update_fields=update_fields,
+            )
+
+    def update_category_translation(
+        self,
+        category,
+        category_data,
+    ):
+        CategoryTranslation.objects.update_or_create(
+            category=category,
+            language=ENGLISH_LANGUAGE,
+            defaults={
+                "name": category_data["name_en"],
+                "description": category_data.get(
+                    "description_en",
+                    "",
+                ),
+            },
+        )
 
     def create_brands(self):
         touched_count = 0
@@ -676,7 +835,10 @@ class Command(BaseCommand):
                 slug=brand_data["slug"],
                 defaults={
                     "name": brand_data["name"],
-                    "logo_url": brand_data.get("logo_url", ""),
+                    "logo_url": brand_data.get(
+                        "logo_url",
+                        "",
+                    ),
                     "is_active": True,
                 },
             )
@@ -687,8 +849,13 @@ class Command(BaseCommand):
                 brand.name = brand_data["name"]
                 update_fields.append("name")
 
-            if brand.logo_url != brand_data.get("logo_url", ""):
-                brand.logo_url = brand_data.get("logo_url", "")
+            logo_url = brand_data.get(
+                "logo_url",
+                "",
+            )
+
+            if brand.logo_url != logo_url:
+                brand.logo_url = logo_url
                 update_fields.append("logo_url")
 
             if not brand.is_active:
@@ -696,7 +863,9 @@ class Command(BaseCommand):
                 update_fields.append("is_active")
 
             if update_fields:
-                brand.save(update_fields=update_fields)
+                brand.save(
+                    update_fields=update_fields,
+                )
 
             touched_count += 1
 
@@ -728,8 +897,14 @@ class Command(BaseCommand):
                 "color",
                 "background_color",
             ]:
-                if getattr(badge, field_name) != badge_data[field_name]:
-                    setattr(badge, field_name, badge_data[field_name])
+                new_value = badge_data[field_name]
+
+                if getattr(badge, field_name) != new_value:
+                    setattr(
+                        badge,
+                        field_name,
+                        new_value,
+                    )
                     update_fields.append(field_name)
 
             if not badge.is_active:
@@ -737,7 +912,17 @@ class Command(BaseCommand):
                 update_fields.append("is_active")
 
             if update_fields:
-                badge.save(update_fields=update_fields)
+                badge.save(
+                    update_fields=update_fields,
+                )
+
+            BadgeTranslation.objects.update_or_create(
+                badge=badge,
+                language=ENGLISH_LANGUAGE,
+                defaults={
+                    "label": badge_data["label_en"],
+                },
+            )
 
             touched_count += 1
 
@@ -779,17 +964,28 @@ class Command(BaseCommand):
                 update_fields.append("filterable")
 
             if update_fields:
-                attribute.save(update_fields=update_fields)
+                attribute.save(
+                    update_fields=update_fields,
+                )
 
-            for index, value in enumerate(attribute_data["values"]):
-                value_slug = slugify(value)
+            ProductAttributeTranslation.objects.update_or_create(
+                attribute=attribute,
+                language=ENGLISH_LANGUAGE,
+                defaults={
+                    "name": attribute_data["name_en"],
+                    "description": "",
+                },
+            )
+
+            for index, value_data in enumerate(attribute_data["values"]):
+                value_slug = slugify(value_data["value_en"])
 
                 attribute_value, value_created = (
                     ProductAttributeValue.objects.get_or_create(
                         attribute=attribute,
                         slug=value_slug,
                         defaults={
-                            "value": value,
+                            "value": value_data["value"],
                             "display_order": index,
                         },
                     )
@@ -797,8 +993,8 @@ class Command(BaseCommand):
 
                 value_update_fields = []
 
-                if attribute_value.value != value:
-                    attribute_value.value = value
+                if attribute_value.value != value_data["value"]:
+                    attribute_value.value = value_data["value"]
                     value_update_fields.append("value")
 
                 if attribute_value.display_order != index:
@@ -806,17 +1002,29 @@ class Command(BaseCommand):
                     value_update_fields.append("display_order")
 
                 if value_update_fields:
-                    attribute_value.save(update_fields=value_update_fields)
+                    attribute_value.save(
+                        update_fields=value_update_fields,
+                    )
+
+                ProductAttributeValueTranslation.objects.update_or_create(
+                    attribute_value=attribute_value,
+                    language=ENGLISH_LANGUAGE,
+                    defaults={
+                        "value": value_data["value_en"],
+                    },
+                )
 
                 if value_created:
                     self.stdout.write(
-                        f"   ✅ Created value: {attribute.name} / {attribute_value.value}"
+                        f"   ✅ Created value: "
+                        f"{attribute.name} / "
+                        f"{attribute_value.value}"
                     )
 
             touched_count += 1
 
             if created:
-                self.stdout.write(f"✅ Created select attribute: {attribute.name}")
+                self.stdout.write(f"✅ Created select attribute: " f"{attribute.name}")
 
         return touched_count
 
@@ -853,11 +1061,22 @@ class Command(BaseCommand):
                 update_fields.append("filterable")
 
             if update_fields:
-                attribute.save(update_fields=update_fields)
+                attribute.save(
+                    update_fields=update_fields,
+                )
+
+            ProductAttributeTranslation.objects.update_or_create(
+                attribute=attribute,
+                language=ENGLISH_LANGUAGE,
+                defaults={
+                    "name": attribute_data["name_en"],
+                    "description": "",
+                },
+            )
 
             touched_count += 1
 
             if created:
-                self.stdout.write(f"✅ Created numeric attribute: {attribute.name}")
+                self.stdout.write(f"✅ Created numeric attribute: " f"{attribute.name}")
 
         return touched_count

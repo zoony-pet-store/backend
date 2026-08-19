@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.db import models
 from django.utils.translation import get_language
+from django.core.exceptions import ValidationError
 from django_jsonform.models.fields import JSONField as JSONFormField
 
 from .animal_type import AnimalType
@@ -33,25 +34,35 @@ def get_object_translation(obj, language=None, fallback_language=None):
     if translations_manager is None:
         return None
 
-    translations = list(translations_manager.all())
     current_language = normalize_language_code(language or get_current_language())
-    default_language = normalize_language_code(
-        fallback_language or settings.LANGUAGE_CODE
-    )
+    default_language = normalize_language_code(settings.LANGUAGE_CODE)
+
+    if current_language == default_language:
+        return None
+
+    translations = list(translations_manager.all())
 
     for translation in translations:
         if normalize_language_code(translation.language) == current_language:
             return translation
 
-    for translation in translations:
-        if normalize_language_code(translation.language) == default_language:
-            return translation
+    if fallback_language:
+        fallback_language = normalize_language_code(fallback_language)
+
+        if fallback_language != default_language:
+            for translation in translations:
+                if normalize_language_code(translation.language) == fallback_language:
+                    return translation
 
     return None
 
 
 def translated_field(obj, field_name, language=None, fallback_language=None):
-    translation = get_object_translation(obj, language, fallback_language)
+    translation = get_object_translation(
+        obj,
+        language,
+        fallback_language,
+    )
 
     if translation:
         value = getattr(translation, field_name, None)
@@ -77,6 +88,18 @@ class BaseTranslation(models.Model):
 
         if self.language:
             self.language = normalize_language_code(self.language)
+
+        default_language = normalize_language_code(settings.LANGUAGE_CODE)
+
+        if self.language == default_language:
+            raise ValidationError(
+                {
+                    "language": (
+                        "Default-language content must be stored "
+                        "in the model's base fields."
+                    )
+                }
+            )
 
     def save(self, *args, **kwargs):
         self.full_clean()
