@@ -162,9 +162,7 @@ class BadgeForm(forms.ModelForm):
         value = (self.cleaned_data.get(field_name) or "").strip()
 
         if not HEX_COLOR_RE.fullmatch(value):
-            raise forms.ValidationError(
-                "Enter a valid HEX color, e.g. #A29696."
-            )
+            raise forms.ValidationError("Enter a valid HEX color, e.g. #A29696.")
 
         if not value.startswith("#"):
             value = f"#{value}"
