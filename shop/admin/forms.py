@@ -162,7 +162,9 @@ class BadgeForm(forms.ModelForm):
         value = (self.cleaned_data.get(field_name) or "").strip()
 
         if not HEX_COLOR_RE.fullmatch(value):
-            raise forms.ValidationError("Enter a valid HEX color, e.g. #A29696.")
+            raise forms.ValidationError(
+                "Enter a valid HEX color, e.g. #A29696."
+            )
 
         if not value.startswith("#"):
             value = f"#{value}"
@@ -170,7 +172,10 @@ class BadgeForm(forms.ModelForm):
         return value.upper()
 
 
-class CategoryForm(forms.ModelForm):
+class CategoryForm(ImageUrlAdminFormMixin):
+    image_url_field_name = "image_url"
+    image_alt_text_source_field = "name"
+
     cascade_animal_type_to_subtree = forms.BooleanField(
         required=False,
         label="Move whole subtree to this animal type",

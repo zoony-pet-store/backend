@@ -33,6 +33,7 @@ class ProductCardSerializer(serializers.ModelSerializer):
         model = Product
         fields = [
             "id",
+            "slug",
             "name",
             "brand",
             "image_url",
@@ -367,7 +368,6 @@ class ProductDetailSerializer(ProductCardSerializer):
                 "id": str(obj.category.animal_type.id),
                 "name": translated_field(obj.category.animal_type, "name"),
                 "slug": obj.category.animal_type.slug,
-                "url": f"/categories/{obj.category.animal_type.slug}",
             }
         ]
         category_path = []
@@ -384,7 +384,6 @@ class ProductDetailSerializer(ProductCardSerializer):
                     "id": str(category.id),
                     "name": translated_field(category, "name"),
                     "slug": category.slug,
-                    "url": None,
                 }
             )
 
@@ -393,8 +392,7 @@ class ProductDetailSerializer(ProductCardSerializer):
                 "type": "product",
                 "id": str(obj.id),
                 "name": translated_field(obj, "name"),
-                "slug": str(obj.id),
-                "url": None,
+                "slug": obj.slug,
             }
         )
 
