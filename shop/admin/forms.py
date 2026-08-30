@@ -1,5 +1,7 @@
 import re
 from decimal import Decimal, ROUND_HALF_UP
+from pathlib import Path
+from xml.etree import ElementTree
 
 from django import forms
 from django_jsonform.widgets import JSONFormWidget
@@ -39,6 +41,46 @@ class MediaAssetChoiceField(forms.ModelChoiceField):
         return obj.title or "Untitled image"
 
 
+class MediaImageField(forms.FileField):
+    def to_python(self, data):
+        uploaded_file = super().to_python(data)
+
+        if uploaded_file is None:
+            return None
+
+        extension = Path(uploaded_file.name).suffix.lower()
+
+        if extension == ".svg":
+            self._validate_svg(uploaded_file)
+            return uploaded_file
+
+        try:
+            validated_file = forms.ImageField(required=False).clean(uploaded_file)
+        except forms.ValidationError as error:
+            raise forms.ValidationError("Upload a valid image file or SVG.") from error
+
+        uploaded_file.seek(0)
+
+        return validated_file
+
+    @staticmethod
+    def _validate_svg(uploaded_file):
+        try:
+            content = uploaded_file.read()
+            root = ElementTree.fromstring(content)
+
+            tag = root.tag.split("}")[-1].lower()
+
+            if tag != "svg":
+                raise forms.ValidationError("Uploaded file is not a valid SVG.")
+
+        except ElementTree.ParseError as error:
+            raise forms.ValidationError("Uploaded file is not a valid SVG.") from error
+
+        finally:
+            uploaded_file.seek(0)
+
+
 class ImageUrlAdminFormMixin(forms.ModelForm):
     image_url_field_name = ""
     image_alt_text_source_field = "name"
@@ -50,12 +92,13 @@ class ImageUrlAdminFormMixin(forms.ModelForm):
         help_text="Choose an existing image from media library.",
         widget=MediaAssetSelectWidget(),
     )
-    upload_file = forms.ImageField(
+    upload_file = MediaImageField(
         required=False,
         label="Upload new image",
         help_text=(
-            "Upload a new image from your computer/device. "
-            "It will be uploaded to Cloudinary and saved to Media assets automatically."
+            "Upload PNG, JPEG, WebP, GIF or SVG. "
+            "It will be uploaded to Cloudinary and saved "
+            "to Media assets automatically."
         ),
     )
 
@@ -580,7 +623,7 @@ class ProductVariantAttributeForm(forms.ModelForm):
 
 
 class MediaAssetAdminForm(forms.ModelForm):
-    upload_file = forms.ImageField(
+    upload_file = MediaImageField(
         required=False,
         label="Upload image",
         help_text="Upload image from your computer/device to Cloudinary.",
@@ -643,7 +686,7 @@ class MediaAssetAdminForm(forms.ModelForm):
 
 
 class ProductImageAdminForm(forms.ModelForm):
-    upload_file = forms.ImageField(
+    upload_file = MediaImageField(
         required=False,
         label="Upload new image",
         help_text=(
