@@ -189,7 +189,7 @@ class BrandForm(ImageUrlAdminFormMixin):
 class BadgeForm(forms.ModelForm):
     class Meta:
         model = Badge
-        fields = "__all__"
+        exclude = ("slug",)
         widgets = {
             "color": HexColorPickerWidget(),
             "background_color": HexColorPickerWidget(),
@@ -229,7 +229,7 @@ class CategoryForm(ImageUrlAdminFormMixin):
 
     class Meta:
         model = Category
-        fields = "__all__"
+        exclude = ("description", "sort_order", "level")
         widgets = {
             "animal_type": forms.HiddenInput,
         }
