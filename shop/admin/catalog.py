@@ -53,6 +53,7 @@ class AnimalTypeAdmin(ModelAdmin):
 @admin.register(Category)
 class CategoryAdmin(ModelAdmin):
     form = CategoryForm
+
     list_display = (
         "name",
         "animal_type",
@@ -62,10 +63,12 @@ class CategoryAdmin(ModelAdmin):
         "is_active",
         "product_count",
     )
+
     list_select_related = ("animal_type", "parent")
     list_filter = ("is_active", "animal_type")
     search_fields = ("name", "slug", "parent__name", "animal_type__name")
     ordering = ("animal_type__name", "sort_order", "name")
+
     readonly_fields = ("image_preview",)
     inlines = (CategoryTranslationInline,)
 
@@ -76,10 +79,7 @@ class CategoryAdmin(ModelAdmin):
                 "fields": (
                     "name",
                     "slug",
-                    "description",
                     "is_active",
-                    "sort_order",
-                    "level",
                 )
             },
         ),
