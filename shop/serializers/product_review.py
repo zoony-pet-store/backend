@@ -106,9 +106,8 @@ class ProductReviewCreateSerializer(serializers.ModelSerializer):
         write_only=True,
     )
     comment = serializers.CharField(
-        required=True,
-        allow_blank=False,
-        min_length=1,
+        required=False,
+        allow_blank=True,
     )
     positive_comment = serializers.CharField(
         required=False,
@@ -133,12 +132,7 @@ class ProductReviewCreateSerializer(serializers.ModelSerializer):
         ]
 
     def validate_comment(self, value):
-        value = value.strip()
-
-        if not value:
-            raise serializers.ValidationError(_("Comment is required."))
-
-        return value
+        return value.strip()
 
     def validate_reviewer_name(self, value):
         value = value.strip()
@@ -167,7 +161,6 @@ class ProductReviewCreateSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         rating = attrs.pop("rating")
-        comment = attrs["comment"]
 
         if rating * 2 != int(rating * 2):
             raise serializers.ValidationError(
