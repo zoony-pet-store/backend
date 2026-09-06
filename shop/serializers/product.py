@@ -1,3 +1,4 @@
+from django.utils.translation import gettext as _
 from rest_framework import serializers
 
 from ..models import Product, ProductAttribute, translated_field
@@ -315,6 +316,7 @@ class ProductDetailSerializer(ProductCardSerializer):
     category = serializers.SerializerMethodField()
     breadcrumbs = serializers.SerializerMethodField()
     content_blocks = serializers.SerializerMethodField()
+    characteristics = serializers.SerializerMethodField()
     brand = BrandSerializer(read_only=True)
 
     class Meta:
@@ -344,6 +346,7 @@ class ProductDetailSerializer(ProductCardSerializer):
             "variants",
             "images",
             "reviews",
+            "characteristics",
             "content_blocks",
             "meta_title",
             "meta_description",
@@ -471,6 +474,114 @@ class ProductDetailSerializer(ProductCardSerializer):
             for key, value in content.items()
             if value not in ("", None, [], {})
         }
+
+    def get_characteristics(self, obj):
+        characteristics = [
+            {
+                "key": "animal",
+                "label": _("Animal"),
+                "values": [
+                    {
+                        "value": translated_field(
+                            obj.category.animal_type,
+                            "name",
+                        ),
+                        "slug": obj.category.animal_type.slug,
+                    }
+                ],
+            },
+            {
+                "key": "brand",
+                "label": _("Brand"),
+                "values": (
+                    [
+                        {
+                            "value": obj.brand.name,
+                            "slug": obj.brand.slug,
+                        }
+                    ]
+                    if obj.brand
+                    else []
+                ),
+            },
+            {
+                "key": "product_group",
+                "label": _("Product group"),
+                "values": [
+                    {
+                        "value": translated_field(
+                            obj.category,
+                            "name",
+                        ),
+                        "slug": obj.category.slug,
+                    }
+                ],
+            },
+        ]
+
+        attributes = {}
+
+        for variant in self._get_active_variants(obj):
+            for item in variant.variant_attributes.all():
+                attribute = item.attribute
+
+                if attribute.slug not in attributes:
+                    attributes[attribute.slug] = {
+                        "key": attribute.slug,
+                        "label": translated_field(attribute, "name"),
+                        "type": attribute.type,
+                        "values": [],
+                        "_seen": set(),
+                    }
+
+                attribute_data = attributes[attribute.slug]
+
+                if attribute.type == ProductAttribute.AttributeType.NUMERIC:
+                    if item.value_numeric is None:
+                        continue
+
+                    value_key = (
+                        str(item.value_numeric),
+                        item.unit,
+                    )
+
+                    if value_key in attribute_data["_seen"]:
+                        continue
+
+                    attribute_data["_seen"].add(value_key)
+
+                    attribute_data["values"].append(
+                        serialize_numeric_attribute_value(item)
+                    )
+
+                    continue
+
+                if not item.value_id:
+                    continue
+
+                value_id = str(item.value_id)
+
+                if value_id in attribute_data["_seen"]:
+                    continue
+
+                attribute_data["_seen"].add(value_id)
+
+                attribute_data["values"].append(
+                    {
+                        "id": value_id,
+                        "value": translated_field(
+                            item.value,
+                            "value",
+                        ),
+                        "slug": item.value.slug,
+                    }
+                )
+
+        for attribute_data in attributes.values():
+            attribute_data.pop("_seen")
+            characteristics.append(attribute_data)
+
+        return characteristics
 
 
 class ProductFilterSerializer(serializers.Serializer):
