@@ -2,7 +2,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: zoony\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-26 17:29+0300\n"
+"POT-Creation-Date: 2026-09-06 23:17+0300\n"
 "PO-Revision-Date: 2026-07-22 00:00+0000\n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -63,19 +63,46 @@ msgstr "У token немає email."
 msgid "Google account email not verified."
 msgstr "Email Google-акаунта не підтверджено."
 
-#: .\shop\serializers\product_review.py:108
-msgid "Comment is required."
-msgstr "Коментар є обов'язковим."
+#: .\shop\serializers\product.py:482
+msgid "Animal"
+msgstr "Тварина"
 
-#: .\shop\validators\product_variants.py:124
-#, python-format
+#: .\shop\serializers\product.py:495
+msgid "Brand"
+msgstr "Бренд"
+
+#: .\shop\serializers\product.py:509
+msgid "Product group"
+msgstr "Група товару"
+
+#: .\shop\serializers\product_review.py:141
+#, fuzzy
+#| msgid "Comment is required."
+msgid "Name is required."
+msgstr "Ім'я є обов'язковим"
+
+#: .\shop\serializers\product_review.py:168
+msgid "Rating must use 0.5 steps."
+msgstr ""
+
+#: .\shop\validators\product_variants.py:239
+#, fuzzy, python-format
+#| msgid ""
+#| "A variant with the same attribute combination already exists: "
+#| "\"%(variant_identifier)s\". At least one attribute value must be "
+#| "different."
 msgid ""
-"A variant with the same attribute combination already exists: "
-"\"%(variant_identifier)s\". At least one attribute value must be different."
+"Saving these attribute changes would create duplicate variant combinations: "
+"\"%(first_variant)s\" and \"%(second_variant)s\". At least one attribute "
+"value must be different."
 msgstr ""
 "Варіант із такою самою комбінацією атрибутів уже існує: "
 "\"%(variant_identifier)s\". Принаймні одне значення атрибута має "
 "відрізнятися."
+
+#: .\shop\validators\product_variants.py:258
+msgid "new variant"
+msgstr ""
 
 #: .\shop\views\auth.py:66
 msgid "User registered successfully"
@@ -116,3 +143,6 @@ msgstr "product_id є обов'язковим"
 #: .\shop\views\media.py:133
 msgid "display_order must be an integer"
 msgstr "display_order має бути цілим числом"
+
+#~ msgid "Comment is required."
+#~ msgstr "Коментар є обов'язковим."
