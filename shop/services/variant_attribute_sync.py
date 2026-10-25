@@ -2,6 +2,7 @@ from contextlib import contextmanager
 from threading import local
 
 from shop.models import ProductAttribute, ProductVariant, ProductVariantAttribute
+from shop.models.product_attribute import normalize_numeric_attribute_to_base
 
 
 _sync_state = local()
@@ -22,6 +23,19 @@ def disable_variant_attribute_sync():
         _sync_state.disabled = previous_value
 
 
+def get_normalized_numeric_values(item):
+    if (
+        item.attribute.type == ProductAttribute.AttributeType.NUMERIC
+        and item.value_numeric is not None
+        and item.unit
+    ):
+        return normalize_numeric_attribute_to_base(
+            value=item.value_numeric,
+            unit=item.unit,
+        )
+    return None, ""
+
+
 def has_attribute_value(item):
     if not item:
         return False
@@ -36,14 +50,16 @@ def has_attribute_value(item):
 
 
 def build_copied_attribute(item, variant_id):
+    value_numeric_base, base_unit = get_normalized_numeric_values(item)
+
     return ProductVariantAttribute(
         variant_id=variant_id,
         attribute_id=item.attribute_id,
         value_id=item.value_id,
         value_numeric=item.value_numeric,
         unit=item.unit or "",
-        value_numeric_base=item.value_numeric_base,
-        base_unit=item.base_unit or "",
+        value_numeric_base=value_numeric_base,
+        base_unit=base_unit,
     )
 
 
@@ -138,6 +154,8 @@ def ensure_attribute_for_all_product_variants(source_item):
             )
 
         if has_attribute_value(source_item):
+            value_numeric_base, base_unit = get_normalized_numeric_values(source_item)
+
             ProductVariantAttribute.objects.filter(
                 variant_id__in=variant_ids,
                 attribute_id=attribute_id,
@@ -150,6 +168,8 @@ def ensure_attribute_for_all_product_variants(source_item):
                 value_id=source_item.value_id,
                 value_numeric=source_item.value_numeric,
                 unit=source_item.unit or "",
+                value_numeric_base=value_numeric_base,
+                base_unit=base_unit,
             )
 
 

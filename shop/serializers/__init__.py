@@ -36,7 +36,11 @@ from .product_review import (
     ProductReviewSerializer,
     ProductReviewCreateResponseSerializer,
 )
-from .product_variant import ProductVariantCardSerializer, ProductVariantSerializer
+from .product_variant import (
+    ProductVariantCardSerializer,
+    ProductVariantSerializer,
+    CatalogVariantCardSerializer,
+)
 
 __all__ = [
     "CustomerSerializer",
@@ -64,6 +68,7 @@ __all__ = [
     "ProductReviewSerializer",
     "ProductVariantCardSerializer",
     "ProductVariantSerializer",
+    "CatalogVariantCardSerializer",
     "UserRegisterSerializer",
     "format_decimal_for_api",
     "serialize_numeric_attribute_value",
