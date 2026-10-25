@@ -29,6 +29,12 @@ urlpatterns = [
         views.RelatedProductsView.as_view(),
         name="related-products",
     ),
+    # ========== CATALOG ==========
+    path(
+        "catalog",
+        views.CatalogVariantListView.as_view(),
+        name="catalog-list",
+    ),
     # ========== BRANDS ==========
     path("brands", views.BrandListView.as_view(), name="brand-list"),
     path(

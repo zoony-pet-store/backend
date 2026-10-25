@@ -236,6 +236,27 @@ class ProductVariantAttribute(models.Model):
     def save(self, *args, **kwargs):
         self.sync_normalized_numeric_value()
         self.full_clean()
+
+        update_fields = kwargs.get("update_fields")
+
+        if update_fields is not None:
+            update_fields = set(update_fields)
+
+            normalization_source_fields = {
+                "attribute",
+                "attribute_id",
+                "value_numeric",
+                "unit",
+            }
+            if update_fields & normalization_source_fields:
+                update_fields.update(
+                    {
+                        "value_numeric_base",
+                        "base_unit",
+                    }
+                )
+                kwargs["update_fields"] = update_fields
+
         super().save(*args, **kwargs)
 
     def __str__(self):

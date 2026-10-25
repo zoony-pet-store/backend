@@ -21,6 +21,7 @@ from .media import ProductImageUploadView
 from .product import (
     ProductDetailView,
     ProductListView,
+    CatalogVariantListView,
     ProductPagination,
     ProductSearchView,
     RelatedProductsView,
@@ -45,6 +46,7 @@ __all__ = [
     "ProductDetailView",
     "ProductImageUploadView",
     "ProductListView",
+    "CatalogVariantListView",
     "ProductPagination",
     "ProductReviewCreateView",
     "ProductSearchView",
