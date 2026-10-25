@@ -1448,6 +1448,7 @@ def test_catalog_variant_card_contains_required_product_and_variant_fields(
     assert card["stock"] == variant.stock
     assert card["in_stock"] is True
 
+
 def test_catalog_accepts_locale_query_parameter(client):
     response = client.get(
         "/api/catalog",
