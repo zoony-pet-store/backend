@@ -119,7 +119,7 @@ class CategorySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Category
-        fields = ["name", "slug", "image_url"]
+        fields = ["id", "name", "slug", "image_url"]
 
     def get_name(self, obj):
         return translated_field(obj, "name")
@@ -172,6 +172,7 @@ class CategoryWithChildrenSerializer(CategorySerializer):
 
     class Meta(CategorySerializer.Meta):
         fields = [
+            "id",
             "name",
             "slug",
             "image_url",

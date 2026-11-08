@@ -208,7 +208,7 @@ class CatalogVariantListView(generics.ListAPIView):
     ORDERING_FIELDS = {
         "name": "product__name",
         "price": "price",
-        "rating": "rating",
+        "rating": "product__rating",
         "created_at": "product__created_at",
         "review_count": "product__review_count",
     }

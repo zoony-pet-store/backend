@@ -1456,3 +1456,66 @@ def test_catalog_accepts_locale_query_parameter(client):
     )
 
     assert response.status_code == 200
+
+def test_catalog_orders_variants_by_product_rating(
+    client,
+    make_product,
+    make_variant,
+):
+    dogs = AnimalType.objects.create(name="Dogs", slug="dogs")
+    category = Category.objects.create(
+        name="Food",
+        slug="food",
+        animal_type=dogs,
+    )
+
+    low = make_product(
+        name="Low Rated",
+        category=category,
+        rating=Decimal("3.00"),
+    )
+    high = make_product(
+        name="High Rated",
+        category=category,
+        rating=Decimal("4.80"),
+    )
+
+    low_variant = make_variant(product=low, price=Decimal("500"))
+    high_variant = make_variant(product=high, price=Decimal("700"))
+
+    response = client.get("/api/catalog", {"ordering": "-rating"})
+
+    assert response.status_code == 200
+    assert [
+        card["variant_id"] for card in response.data["results"]
+    ] == [
+        str(high_variant.id),
+        str(low_variant.id),
+    ]
+
+@pytest.mark.django_db
+def test_category_detail_includes_category_and_subcategory_ids(client):
+    dogs = AnimalType.objects.create(name="Dogs", slug="dogs")
+
+    food = Category.objects.create(
+        name="Food",
+        slug="food",
+        animal_type=dogs,
+    )
+    treats = Category.objects.create(
+        name="Treats",
+        slug="treats",
+        animal_type=dogs,
+        parent=food,
+    )
+
+    response = client.get("/api/dogs/food")
+
+    assert response.status_code == 200
+    assert response.data["category"]["id"] == str(food.id)
+    assert response.data["category"]["subcategories"][0]["id"] == str(treats.id)
+
+    leaf_response = client.get("/api/dogs/food/treats")
+
+    assert leaf_response.status_code == 200
+    assert leaf_response.data["category"]["id"] == str(treats.id)
