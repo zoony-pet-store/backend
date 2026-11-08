@@ -1457,6 +1457,7 @@ def test_catalog_accepts_locale_query_parameter(client):
 
     assert response.status_code == 200
 
+
 def test_catalog_orders_variants_by_product_rating(
     client,
     make_product,
@@ -1486,12 +1487,11 @@ def test_catalog_orders_variants_by_product_rating(
     response = client.get("/api/catalog", {"ordering": "-rating"})
 
     assert response.status_code == 200
-    assert [
-        card["variant_id"] for card in response.data["results"]
-    ] == [
+    assert [card["variant_id"] for card in response.data["results"]] == [
         str(high_variant.id),
         str(low_variant.id),
     ]
+
 
 @pytest.mark.django_db
 def test_category_detail_includes_category_and_subcategory_ids(client):
